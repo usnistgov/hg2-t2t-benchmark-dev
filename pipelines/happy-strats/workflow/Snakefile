@@ -285,17 +285,16 @@ rule make_happy_plot:
     script:
         "scripts/pretty_fig.R"
 
-rule make_comp_plot:
-    input:
-        expand(
-            rules.run_happy.output,
-            ref=["CHM13"],
-            experiment=["ill_comp", "hifi_comp"],
-        ),
-        
+
+# rule make_comp_plot:
+#     input:
 
 
 rule all:
     input:
         rules.make_happy_plot.output,
-        rules.make_comp_plot.output,
+        expand(
+            rules.run_happy.output,
+            ref=["CHM13"],
+            experiment=["ill_comp", "hifi_comp"],
+        ),
