@@ -49,6 +49,8 @@ conf = {
         "ref": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz",
         "query_vcf": {
             "comparison": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/PacBio_HiFi-Revio_20231031/pacbio-wgs-wdl_germline_20231031/HG002.CHM13.deepvariant.phased.vcf.gz",
+            "ill_comp": "https://storage.googleapis.com/brain-genomics/awcarroll/misc/giab/chm13.HG002.novaseq.pcr-free.50x.chm13.vcf.gz",
+            "hifi_comp": "https://storage.googleapis.com/brain-genomics/awcarroll/misc/giab/HG002.pacbio.chm13.vcf.gz",
         },
         "bench": {
             "asm": {
@@ -283,7 +285,17 @@ rule make_happy_plot:
     script:
         "scripts/pretty_fig.R"
 
+rule make_comp_plot:
+    input:
+        expand(
+            rules.run_happy.output,
+            ref=["CHM13"],
+            experiment=["ill_comp", "hifi_comp"],
+        ),
+        
+
 
 rule all:
     input:
         rules.make_happy_plot.output,
+        rules.make_comp_plot.output,
