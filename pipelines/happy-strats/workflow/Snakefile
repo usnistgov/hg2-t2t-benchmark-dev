@@ -296,7 +296,7 @@ rule make_comp_plot:
         hifi=expand(
             rules.run_happy.output,
             ref=["CHM13"],
-            experiment="ill_comp",
+            experiment="hifi_comp",
         ),
     output:
         "results/final/hifi_v_illumina.pdf",
