@@ -286,8 +286,24 @@ rule make_happy_plot:
         "scripts/pretty_fig.R"
 
 
-# rule make_comp_plot:
-#     input:
+rule make_comp_plot:
+    input:
+        illumina=expand(
+            rules.run_happy.output,
+            ref=["CHM13"],
+            experiment="ill_comp",
+        ),
+        hifi=expand(
+            rules.run_happy.output,
+            ref=["CHM13"],
+            experiment="ill_comp",
+        ),
+    output:
+        "results/final/hifi_v_illumina.pdf",
+    conda:
+        "envs/rmarkdown.yml"
+    script:
+        "scripts/metric_plot.R"
 
 
 rule all:
