@@ -72,4 +72,4 @@ df %>%
   scale_x_continuous(limits = c(0.65, 1)) +
   scale_y_continuous(limits = c(0.65, 1)) +
   pretty_theme
-ggsave(snakemake@output[[1]], width = 120, height = 80)
+ggsave(snakemake@output[[1]], width = 120, height = 80, units = "mm")
