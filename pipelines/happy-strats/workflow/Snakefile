@@ -309,8 +309,4 @@ rule make_comp_plot:
 rule all:
     input:
         rules.make_happy_plot.output,
-        expand(
-            rules.run_happy.output,
-            ref=["CHM13"],
-            experiment=["ill_comp", "hifi_comp"],
-        ),
+        rules.make_comp_plot.output,
