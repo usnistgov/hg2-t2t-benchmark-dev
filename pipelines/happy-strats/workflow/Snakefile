@@ -88,6 +88,13 @@ use rule download_ref as download_bench_bed with:
         url=lambda w: conf[w.ref]["bench"][w.bench]["bed"],
 
 
+use rule download_ref as download_stvar_bench_bed with:
+    output:
+        "resources/{ref}/asm/bench_stvar.bed",
+    params:
+        url=lambda w: f"https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/{w.ref}v2.0_HG2-T2TQ100-V1.0_stvar.benchmark.bed",
+
+
 use rule download_ref as download_query_vcf with:
     output:
         "resources/{ref}/{experiment}/query.vcf.gz",
@@ -179,6 +186,48 @@ rule get_syntenic:
         """
         complementBed -i {input.bed} -g {input.genome} > {output}
         """
+
+
+rule combine_bench_beds:
+    input:
+        smvar=lambda w: expand(rules.download_bench_bed.output, bench="asm", ref=w.ref),
+        stvar=rules.download_stvar_bench_bed.output,
+    output:
+        "results/{ref}/Q100_all_vars.bed",
+    conda:
+        "envs/bedtools.yml"
+    shell:
+        """
+        multiIntersectBed -i {input.smvar} {input.stvar} | \
+        mergeBed -i stdin > {output}
+        """
+
+
+rule get_syn_variants:
+    input:
+        vcf=lambda w: expand(rules.download_bench_vcf.output, bench="asm", ref=w.ref),
+        bench=rules.combine_bench_beds.output,
+        syn=rules.get_syntenic.output,
+    output:
+        "results/{ref}/Q100_vars_syntenic.tsv.gz",
+    conda:
+        "envs/bedtools.yml"
+    shell:
+        """
+        intersectBed -a {input.vcf} -b {input.bench} -header | \
+        awk '/^#/ || $5 ~ /^([ACGT]+)$/' | \
+        intersectBed -a stdin -b {input.syn} | \
+        gzip -c > {output}
+        """
+
+
+use rule get_syn_variants as get_nonsyn_variants with:
+    input:
+        vcf=lambda w: expand(rules.download_bench_vcf.output, bench="asm", ref=w.ref),
+        bench=rules.combine_bench_beds.output,
+        syn=rules.download_non_syntenic.output,
+    output:
+        "results/{ref}/Q100_vars_nonsyntenic.tsv.gz",
 
 
 def inputs_for_happiness(wildcards):
@@ -306,7 +355,26 @@ rule make_comp_plot:
         "scripts/metric_plot.R"
 
 
+rule make_syn_plot:
+    input:
+        syn=expand(
+            rules.get_syn_variants.output,
+            ref=["CHM13"],
+        ),
+        nonsyn=expand(
+            rules.get_nonsyn_variants.output,
+            ref=["CHM13"],
+        ),
+    output:
+        "results/final/nonsyn_variants.pdf",
+    conda:
+        "envs/rmarkdown.yml"
+    script:
+        "scripts/nonsyn.R"
+
+
 rule all:
     input:
         rules.make_happy_plot.output,
         rules.make_comp_plot.output,
+        rules.make_syn_plot.output,
