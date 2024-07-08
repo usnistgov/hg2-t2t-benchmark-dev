@@ -144,13 +144,20 @@ make_plot <- function(df) {
       )
     ) %>%
     mutate(Type = if_else(Type == "SNP", "SNV", Type)) %>%
+    mutate(lmean = sprintf("%.2f", mean)) %>%
+    mutate(label_pad = max(upper) * 0.05) %>%
     ggplot(aes(mean, fct_rev(Subset), fill = build)) +
-    geom_col(position = position_dodge()) +
+    geom_col(position = position_dodge(1.0)) +
     geom_errorbar(
       aes(xmin = lower, xmax = upper),
-      position = "dodge",
+      position = position_dodge(1.0),
       linewidth = 0.1
     ) +
+    geom_text(aes(label = lmean, x = upper + label_pad), 
+	      size = 1, 
+	      hjust = 0,
+	      position = position_dodge(1.0)) +
+    scale_x_continuous(expand = expansion(mult = c(0.05, 0.18))) +
     theme(legend.position = "top") +
     pretty_theme
 }
@@ -193,9 +200,6 @@ ggsave(snakemake@output[["ont"]], units = "mm", width = 70, height = 60)
 map_dfr(snakemake@input[["nonsyn"]], ~ read_summary(path_to_ont, .x)) %>%
   filter(Subset %in% nonsyn_subsets) %>%
   filter(Subtype == "*") %>%
-  mutate(
-    build = if_else(build == "syntenic", "all", "non-syntenic"),
-  ) %>%
   make_plot() +
   facet_wrap(c("Type", "metric"), ncol = 2) +
   labs(x = "Phred(Metric)",

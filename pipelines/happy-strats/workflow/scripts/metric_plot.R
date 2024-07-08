@@ -66,10 +66,10 @@ df %>%
   mutate(Subset = factor(Subset, levels = subsets)) %>%
   mutate(Type = if_else(Type == "SNP", "SNV", Type)) %>%
   ggplot(aes(Illumina, Hifi, color = Subset)) +
-  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
-  geom_point() +
+  geom_abline(slope = 1, intercept = 0, color = "black", linetype = "dashed", linewidth = 0.2) +
+  geom_point(size = 0.4) +
   facet_wrap(c("Type", "metric")) +
   scale_x_continuous(limits = c(0.65, 1)) +
   scale_y_continuous(limits = c(0.65, 1)) +
   pretty_theme
-ggsave(snakemake@output[[1]], width = 120, height = 80, units = "mm")
+ggsave(snakemake@output[[1]], width = 80, height = 60, units = "mm")
