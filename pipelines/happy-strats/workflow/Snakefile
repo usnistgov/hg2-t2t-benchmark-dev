@@ -366,7 +366,7 @@ rule make_syn_plot:
             ref=["CHM13"],
         ),
     output:
-        "results/final/nonsyn_variants.pdf",
+        "results/final/nonsyn_variants.png",
     conda:
         "envs/rmarkdown.yml"
     script:
