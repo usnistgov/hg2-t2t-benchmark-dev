@@ -1,0 +1,253 @@
+from pathlib import Path
+from os.path import dirname
+
+src_dir = Path("resources")
+src_query_dir = src_dir / "query"
+src_bench_dir = src_dir / "bench"
+
+res_dir = Path("results")
+
+tools_dir = res_dir / "tools"
+
+res_inter_dir = res_dir / "intermediate"
+res_asm_dir = res_inter_dir / "asm" / "{hap}"
+res_ref_dir = res_inter_dir / "ref" / "{ref}"
+# res_hg2_dir = res_asm_dir / "hg2"
+# res_hg38_dir = res_asm_dir / "hg38"
+# res_dip_dir = res_inter_dir / "dipcall"
+# res_query_dir = res_inter_dir / "query"
+# res_bench_dir = res_inter_dir / "bench"
+res_compbed_dir = res_inter_dir / "comparison" / "bed" / "{ref}" / "{hap}"
+
+final_dir = res_dir / "final"
+res_proj_dir = final_dir / "projections"
+
+HAPLOTYPES = ["pat", "mat"]
+
+ASM = {
+    "mat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v1.1.mat.fasta.gz",
+    "pat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v1.1.pat.fasta.gz",
+}
+
+REF = {
+    "GRCh38": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fasta.gz",
+}
+
+
+################################################################################
+# download a bunch of stuff
+
+
+rule clone_liftover_scripts:
+    output:
+        directory(res_dir / "tools/liftover"),
+    shell:
+        """
+        git clone \
+        --depth 1 \
+        --branch v0.2.0 \
+        https://github.com/mobinasri/flagger.git \
+        {output}
+        """
+
+
+rule download_asm:
+    output:
+        src_dir / "asm" / "{hap}.fa.gz",
+    params:
+        url=lambda w: ASM[w.hap]
+    shell:
+        "curl -SsLqf {params.url} > {output}"
+
+
+use rule download_asm as download_ref with:
+    output:
+        src_dir / "references" / "{ref}.fa.gz",
+    params:
+        url=lambda w: REF[w.ref]
+
+
+# use rule download_ref as download_query_bed with:
+#     output:
+#         src_query_dir / "query.bed",
+#     params:
+#         url="https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/draft_benchmarksets/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k_smvar-exclude/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.benchmark.bed",
+
+
+# use rule download_ref as download_bench_vcf with:
+#     output:
+#         src_bench_dir / "bench.vcf.gz",
+#     params:
+#         url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/SupplementaryFiles/HG002_GRCh38_1_22_v4.2.1_benchmark_phased_MHCassembly_StrandSeqANDTrio.vcf.gz",
+
+
+# use rule download_ref as download_bench_bed with:
+#     output:
+#         src_bench_dir / "bench.bed",
+#     params:
+#         url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed",
+
+
+# use rule download_ref as download_paftools with:
+#     output:
+#         tools_dir / "minimap" / "paftools.js",
+#     params:
+#         url="https://raw.githubusercontent.com/lh3/minimap2/16b8d50199d607ba20754aaf5a7d111b644b66c0/misc/paftools.js",
+
+
+# use rule download_ref as download_PAR with:
+#     output:
+#         src_dir / "references" / "hg38_par.bed",
+#     params:
+#         url="https://github.com/lh3/dipcall/blob/master/data/hs38.PAR.bed",
+
+
+# use rule download_ref as download_strats with:
+#     output:
+#         src_dir / "references" / "strats.tar.gz",
+#     params:
+#         url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/genome-stratifications-GRCh38@all.tar.gz",
+
+
+################################################################################
+# make pafs
+
+
+# for testing
+rule list_test_asm_chrs:
+    input:
+        rules.download_asm.output,
+    output:
+        res_asm_dir / "chrs_filtered.txt",
+    shell:
+        """
+        gunzip -c {input} \
+        grep '>' \
+        grep -E '(chr21|chr22)' > {output}
+        """
+
+
+rule filter_test_asm:
+    input:
+        fa=rules.download_asm.output,
+        regions=rules.list_test_asm_chrs.output,
+    output:
+        res_asm_dir / "filtered.fa.gz",
+    conda:
+        "envs/minimap.yml"
+    shell:
+        """
+        samtools faidx {input.fa} \
+        $(cat {input.regions} | tr '\n' ' ') | \
+        bgzip -c \
+        > {output}
+        """
+
+
+rule index_test_asm:
+    input:
+        rules.filter_test_asm.output,
+    output:
+        rules.filter_test_asm.output[0] + ".fai",
+    conda:
+        "envs/minimap.yml"
+    shell:
+        """
+        samtools faidx {input}
+        """
+
+
+use rule list_test_asm_chrs as list_test_ref_chrs with:
+    input:
+        rules.download_ref.output,
+    output:
+        res_ref_dir / "chrs_filtered.txt",
+
+
+use rule filter_test_asm as filter_test_ref with:
+    input:
+        fa=rules.download_ref.output,
+        regions=rules.list_test_ref_chrs.output,
+    output:
+        res_ref_dir / "filtered.fa.gz",
+
+
+use rule index_test_asm as index_test_ref with:
+    input:
+        rules.filter_test_ref.output,
+    output:
+        rules.filter_test_ref.output[0] + ".fai",
+
+
+use rule index_test_asm as index_asm with:
+    input:
+        rules.download_asm.output,
+    output:
+        rules.download_asm.output[0] + ".fai",
+
+
+use rule index_test_asm as index_ref with:
+    input:
+        rules.download_ref.output,
+    output:
+        rules.download_ref.output[0] + ".fai",
+
+
+rule run_minimap:
+    input:
+        haplotype=rules.filter_test_asm.output,
+        _haplotype_idx=rules.index_test_asm.output,
+        ref=rules.filter_test_ref.output,
+        _ref_idx=rules.index_test_ref.output,
+    output:
+        res_compbed_dir / "hap.paf.gz"
+    conda:
+        "envs/minimap.yml"
+    log:
+        res_compbed_dir / "mm2.log",
+    threads: 16
+    resources:
+        mem_mb=48000,
+    shell:
+        """
+        minimap2 -c --paf-no-hit -t{threads} --cs -z200000,10000,200 -xasm5 \
+          {input.haplotype} \
+          {input.ref} \
+          2> {log} > {output}
+        """
+
+
+################################################################################
+# run liftover
+
+
+rule run_liftover:
+    input:
+        paf=rules.run_minimap.output,
+        bed=src_dir / "bed" / "{hap}_genome_bench.bed",
+        tooldir=rules.clone_liftover_scripts.output,
+    output:
+        projectable=res_compbed_dir / "projectable.bed",
+        projected=res_compbed_dir / "projected.bed",
+    threads: 8
+    resources:
+        mem_mb=32000,
+    shell:
+        """
+        python {input.tooldir}/programs/src/project_blocks_multi_thread.py \
+        --mode ref2asm \
+        --paf {input.paf} \
+        --blocks {input.bed} \
+        --outputProjectable {output.projectable} \
+        --outputProjection {output.projected} \
+        --threads {threads}
+        """
+
+
+rule all:
+    input:
+        expand(
+            rules.run_minimap.output,
+            ref=["GRCh38"],
+            hap=HAPLOTYPES,
+        ),
