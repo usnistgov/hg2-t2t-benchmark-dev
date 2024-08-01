@@ -180,10 +180,14 @@ use rule index_test_asm as index_ref with:
 
 rule run_minimap:
     input:
-        haplotype=rules.filter_test_asm.output,
-        _haplotype_idx=rules.index_test_asm.output,
-        ref=rules.filter_test_ref.output,
-        _ref_idx=rules.index_test_ref.output,
+        # haplotype=rules.filter_test_asm.output,
+        # _haplotype_idx=rules.index_test_asm.output,
+        # ref=rules.filter_test_ref.output,
+        # _ref_idx=rules.index_test_ref.output,
+        haplotype=rules.download_asm.output,
+        _haplotype_idx=rules.index_asm.output,
+        ref=rules.download_ref.output,
+        _ref_idx=rules.index_ref.output,
     output:
         res_compbed_dir / "{hap}.paf",
     conda:
@@ -231,7 +235,6 @@ rule split_errors:
     shell:
         """
         grep {params.chr_filter} {input.bed} | \
-        grep -E '(chr21|chr22)' | \
         sed 's/\t/;/g4' | \
         bedtools sort -i stdin -g {input.genome} \
         > {output} 
