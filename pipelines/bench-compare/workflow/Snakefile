@@ -7,12 +7,10 @@ src_bench_dir = src_dir / "bench"
 
 res_dir = Path("results")
 
-tools_dir = res_dir / "tools"
-
 res_inter_dir = res_dir / "intermediate"
 res_asm_dir = res_inter_dir / "asm" / "{hap}"
 res_ref_dir = res_inter_dir / "ref" / "{ref}"
-res_compbed_dir = res_inter_dir / "comparison" / "bed" / "{ref}" / "{hap}"
+res_compbed_dir = res_inter_dir / "comparison" / "bed" / "{ref}"
 
 final_dir = res_dir / "final" / "{ref}"
 
@@ -39,7 +37,7 @@ ERRORS = {
 
 rule clone_liftover_scripts:
     output:
-        directory(res_dir / "tools/liftover"),
+        directory(src_dir / "tools/liftover"),
     shell:
         """
         git clone \
@@ -79,16 +77,29 @@ rule download_errors:
 # make pafs
 
 
+rule make_asm_genome:
+    input:
+        rules.download_asm.output,
+    output:
+        res_asm_dir / "genome.txt",
+    conda:
+        "envs/minimap.yml"
+    shell:
+        """
+        samtools faidx {input} -o - | \
+        cut -f1-2 > {output}
+        """
+
 # for testing
 rule list_test_asm_chrs:
     input:
-        rules.download_asm.output,
+        rules.make_asm_genome.output,
     output:
         res_asm_dir / "chrs_filtered.txt",
     shell:
         """
-        gunzip -c {input} | \
-        grep '>' | \
+        cat {input} | \
+        cut -f1 | \
         grep -E '(chr21|chr22)' > {output}
         """
 
@@ -123,11 +134,19 @@ rule index_test_asm:
         """
 
 
-use rule list_test_asm_chrs as list_test_ref_chrs with:
+rule list_test_ref_chrs:
     input:
         rules.download_ref.output,
     output:
         res_ref_dir / "chrs_filtered.txt",
+    conda:
+        "envs/minimap.yml"
+    shell:
+        """
+        samtools faidx {input} -o - | \
+        cut -f1 | \
+        grep -E '(chr21|chr22)' > {output}
+        """
 
 
 use rule filter_test_asm as filter_test_ref with:
@@ -166,19 +185,19 @@ rule run_minimap:
         ref=rules.filter_test_ref.output,
         _ref_idx=rules.index_test_ref.output,
     output:
-        res_compbed_dir / "hap.paf.gz",
+        res_compbed_dir / "{hap}.paf",
     conda:
         "envs/minimap.yml"
     log:
-        res_compbed_dir / "mm2.log",
+        res_compbed_dir / "{hap}.log",
     threads: 16
     resources:
         mem_mb=48000,
     shell:
         """
         minimap2 -c --paf-no-hit -t{threads} --cs -z200000,10000,200 -xasm5 \
-          {input.haplotype} \
           {input.ref} \
+          {input.haplotype} \
           2> {log} > {output}
         """
 
@@ -201,25 +220,36 @@ rule slop_errors:
 
 rule split_errors:
     input:
-        rules.download_errors.output,
+        bed=rules.download_errors.output,
+        genome=lambda w: expand(rules.make_asm_genome.output, hap = w.mapped_hap),
     output:
-        res_asm_dir / "errors_slop50_{error_hap}.bed",
+        res_asm_dir / "errors_slop50_{mapped_hap}.bed",
     params:
-        chr_filter=lambda w: "PATERNAL" if w.error_hap == "pat" else "MATERNAL",
+        chr_filter=lambda w: "PATERNAL" if w.mapped_hap == "pat" else "MATERNAL",
+    conda:
+        "envs/minimap.yml"
     shell:
         """
-        grep {params.chr_filter} {input} > {output}
+        grep {params.chr_filter} {input.bed} | \
+        grep -E '(chr21|chr22)' | \
+        sed 's/\t/;/g4' | \
+        bedtools sort -i stdin -g {input.genome} \
+        > {output} 
         """
 
 
 rule run_liftover:
     input:
-        paf=rules.run_minimap.output,
+        paf=lambda w: expand(
+            rules.run_minimap.output,
+            allow_missing=True,
+            hap=w.mapped_hap,
+        ),
         bed=rules.split_errors.output,
         tooldir=rules.clone_liftover_scripts.output,
     output:
-        projectable=final_dir / "hprc_{hap}_q100_{error_hap}_projectable.bed",
-        projected=final_dir / "hprc_{hap}_q100_{error_hap}_projected.bed",
+        projectable=final_dir / "hprc_{hap}_q100_{mapped_hap}_projectable.bed",
+        projected=final_dir / "hprc_{hap}_q100_{mapped_hap}_projected.bed",
     threads: 8
     resources:
         mem_mb=32000,
@@ -241,5 +271,5 @@ rule all:
             rules.run_liftover.output,
             ref=["GRCh38"],
             hap=HAPLOTYPES,
-            error_hap=HAPLOTYPES,
+            mapped_hap=HAPLOTYPES,
         ),
