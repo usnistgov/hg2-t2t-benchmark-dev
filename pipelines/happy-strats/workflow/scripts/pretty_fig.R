@@ -138,8 +138,8 @@ make_plot <- function(df) {
         Subset == "notinalldifficultregions" ~ "Not Difficult",
         Subset == "notinAllHomopolymers_ge7bp_imperfectge11bp_slop5" ~ "Not HPs",
         Subset == "AllHomopolymers_ge7bp_imperfectge11bp_slop5" ~ "HPs",
-        Subset == "notinAllTandemRepeatsandHomopolymers_slop5" ~ "Not TRs/HPs",
-        Subset == "AllTandemRepeatsandHomopolymers_slop5" ~ "TRs/HPs",
+        Subset == "notinAllTandemRepeatsandHomopolymers_slop5" ~ "Not HPs/TRs",
+        Subset == "AllTandemRepeatsandHomopolymers_slop5" ~ "HPs/TRs",
         TRUE ~ "other"
       )
     ) %>%
