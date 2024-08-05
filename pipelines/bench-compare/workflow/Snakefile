@@ -42,7 +42,7 @@ rule clone_liftover_scripts:
         """
         git clone \
         --depth 1 \
-        --branch v0.2.0 \
+        --branch v0.4.0 \
         https://github.com/mobinasri/flagger.git \
         {output}
         """
@@ -236,7 +236,8 @@ rule split_errors:
         """
         grep {params.chr_filter} {input.bed} | \
         sed 's/\t/;/g4' | \
-        bedtools sort -i stdin -g {input.genome} \
+        bedtools sort -i stdin -g {input.genome} | \
+        bedtools merge -i stdin -c 4 -o collapse -delim '~' \
         > {output} 
         """
 
@@ -256,6 +257,8 @@ rule run_liftover:
     threads: 8
     resources:
         mem_mb=32000,
+    conda:
+        "envs/flagger.yml"
     shell:
         """
         python {input.tooldir}/programs/src/project_blocks_multi_thread.py \
