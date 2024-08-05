@@ -41,6 +41,6 @@ readr::read_tsv(path,
   ## ) %>%
   ## filter(str_detect(regions, "notinsegdup")) %>%
   ## select(chrom, start, end, data) %>%
-  arrange(chromidx, start, end) %>%
+  arrange(chromidx, chrom, start, end) %>%
   select(-chromidx) %>%
   readr::write_tsv(snakemake@output[[1]], col_names = FALSE)
