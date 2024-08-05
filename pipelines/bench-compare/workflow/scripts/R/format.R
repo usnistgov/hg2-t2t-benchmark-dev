@@ -25,7 +25,7 @@ readr::read_tsv(path,
                 col_types = "ciidc",
                 col_names = c("chrom", "start", "end", "dissimilarity", "data")
                 ) %>%
-  mutate(chrom = chr2int(chrom)) %>%
+  mutate(chromidx = chr2int(chrom)) %>%
   separate_longer_delim(data, "~") %>%
   separate_wider_delim(data,
                        delim = ";",
@@ -41,6 +41,6 @@ readr::read_tsv(path,
   ## ) %>%
   ## filter(str_detect(regions, "notinsegdup")) %>%
   ## select(chrom, start, end, data) %>%
-  arrange(chrom, start, end) %>%
-  mutate(chrom = int2chr(chrom, chrom_suffix)) %>%
+  arrange(chromidx, start, end) %>%
+  select(-chromidx) %>%
   readr::write_tsv(snakemake@output[[1]], col_names = FALSE)
