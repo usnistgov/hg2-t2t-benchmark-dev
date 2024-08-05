@@ -255,6 +255,8 @@ rule run_liftover:
         projectable=final_dir / "hprc_{hap}_q100_{mapped_hap}_projectable.bed",
         projected=final_dir / "hprc_{hap}_q100_{mapped_hap}_projected.bed",
     threads: 8
+    log:
+        res_inter_dir / "log" / "liftover" / "{ref}_hprc_{hap}_q100_{mapped_hap}.log",
     resources:
         mem_mb=32000,
     conda:
@@ -263,11 +265,13 @@ rule run_liftover:
         """
         python {input.tooldir}/programs/src/project_blocks_multi_thread.py \
         --mode asm2ref \
+        --divergence \
         --paf {input.paf} \
         --blocks {input.bed} \
         --outputProjectable {output.projectable} \
         --outputProjection {output.projected} \
-        --threads {threads}
+        --threads {threads} \
+        > {log}
         """
 
 
