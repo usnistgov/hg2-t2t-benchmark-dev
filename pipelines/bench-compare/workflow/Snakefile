@@ -252,11 +252,11 @@ rule run_liftover:
         bed=rules.split_errors.output,
         tooldir=rules.clone_liftover_scripts.output,
     output:
-        projectable=final_dir / "hprc_{hap}_q100_{mapped_hap}_projectable.bed",
-        projected=final_dir / "hprc_{hap}_q100_{mapped_hap}_projected.bed",
+        projectable=res_compbed_dir / "hprc_{hap}_q100_{mapped_hap}_projectable.bed",
+        projected=res_compbed_dir / "hprc_{hap}_q100_{mapped_hap}_projected.bed",
     threads: 8
     log:
-        res_inter_dir / "log" / "liftover" / "{ref}_hprc_{hap}_q100_{mapped_hap}.log",
+        res_compbed_dir / "hprc_{hap}_q100_{mapped_hap}.log",
     resources:
         mem_mb=32000,
     conda:
@@ -275,10 +275,21 @@ rule run_liftover:
         """
 
 
+rule format_projected:
+    input:
+        rules.run_liftover.output.projected,
+    output:
+        final_dir / "hprc_{hap}_q100_{mapped_hap}_projected.bed.gz",
+    conda:
+        "envs/r.yml"
+    script:
+        "scripts/R/format.R"
+
+
 rule all:
     input:
         expand(
-            rules.run_liftover.output,
+            rules.format_projected.output,
             ref=["GRCh38"],
             hap=HAPLOTYPES,
             mapped_hap=HAPLOTYPES,
