@@ -17,9 +17,9 @@ library(tidyverse)
 ##   sprintf("%s=%%s", .) %>%
 ##   str_c(collapse = ":")
 
-## path <- snakemake@input[[1]]
+path <- snakemake@input[[1]]
 
-chrom_suffix <- if_else(str_detect(path, "pat"), "PATERNAL", "MATERNAL")
+## chrom_suffix <- if_else(str_detect(path, "pat"), "PATERNAL", "MATERNAL")
 
 readr::read_tsv(path,
                 col_types = "ciidc",
