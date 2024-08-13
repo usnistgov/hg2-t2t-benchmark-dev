@@ -25,6 +25,13 @@ REF = {
     "GRCh38": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fasta.gz",
 }
 
+BENCH = {
+    "GRCh38": {
+        "vcf": "https://giab-data.s3.amazonaws.com/defrabb_runs/20240716_v0.018_HG002Q100/results/evaluations/happy/GRCh38_HG002_T~T2TQ100v1.1_Q~HPRCcur.20211005-DB-gtfix_TR~dipbed_GRCh38_HG002-T2TQ100v1.1-dipz2k_smvar-excluded/GRCh38_HG2-HPRCcur.20211005-DB-gtfix_HG2-T2TQ100-V1.1_smvar_dipcall-z2k.vcf.gz",
+        "bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.018-20240716/GRCh38_HG2-T2TQ100-V1.1_smvar.benchmark.bed",
+    },
+}
+
 ERRORS = {
     "pat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v1.1/benchmark/results/hprc_hg002_curated_vs_v1.1/benchpatv1.1/hg002_curated_pat.errortype.hg002v1.1.bed",
     "mat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v1.1/benchmark/results/hprc_hg002_curated_vs_v1.1/benchmatv1.1/hg002_curated_mat.errortype.hg002v1.1.bed",
@@ -62,6 +69,20 @@ use rule download_asm as download_ref with:
         src_dir / "references" / "{ref}.fa.gz",
     params:
         url=lambda w: REF[w.ref],
+
+
+use rule download_asm as download_bench_vcf with:
+    output:
+        src_dir / "references" / "q100_bench_{ref}.vcf.gz",
+    params:
+        url=lambda w: BENCH[w.ref]["vcf"],
+
+
+use rule download_asm as download_bench_bed with:
+    output:
+        src_dir / "references" / "q100_bench_{ref}.bed",
+    params:
+        url=lambda w: BENCH[w.ref]["bed"],
 
 
 rule download_errors:
@@ -279,18 +300,126 @@ rule format_projected:
     input:
         rules.run_liftover.output.projected,
     output:
-        final_dir / "hprc_{hap}_q100_{mapped_hap}_projected.bed.gz",
+        final_dir / "projected" / "hprc_{hap}_q100_{mapped_hap}_projected.bed.gz",
     conda:
         "envs/r.yml"
     script:
         "scripts/R/format.R"
 
 
+################################################################################
+# do fun stats
+
+
+rule get_small_variants:
+    input:
+        vcf=rules.download_bench_vcf.output,
+        bed=rules.download_bench_bed.output,
+    output:
+        res_ref_dir / "small_vars.vcf.gz"
+    conda:
+        "envs/minimap.yml"
+    shell:
+        """
+        intersectBed -a {input.vcf} -b {input.bed} -header | \
+        gzip -c > {output}
+        """
+
+
+rule filter_variants:
+    input:
+        rules.get_small_variants.output,
+    output:
+        res_ref_dir / "small_vars_{label}.vcf.gz"
+    params:
+        temp=lambda _, output: str(output).replace(".gz", ""),
+    shell:
+        """
+        gunzip -c {input} | grep '^#' > {params.temp} &&
+        gunzip -c {input} | grep ':{wildcards.label}' >> {params.temp} &&
+        gzip {params.temp}
+        """
+
+
+rule small_var_projected:
+    input:
+        bed=rules.format_projected.output,
+        regions=rules.download_bench_bed.output,
+    output:
+        final_dir / "projected" / "hprc_{hap}_q100_{mapped_hap}_projected_smallvar.bed.gz",
+    conda:
+        "envs/minimap.yml"
+    shell:
+        """
+        intersectBed -a {input.bed} -b {input.regions} | gzip -c > {output}
+        """
+
+
+rule get_variants_in_both_bench:
+    input:
+        vcf=rules.filter_variants.output,
+        bed=rules.small_var_projected.output,
+    output:
+        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "{label}_both.vcf.gz",
+    conda:
+        "envs/minimap.yml"
+    shell:
+        """
+        intersectBed -a {input.vcf} -b {input.bed} -u | gzip -c > {output}
+        """
+
+
+rule get_variants_in_both_projected:
+    input:
+        vcf=rules.filter_variants.output,
+        bed=rules.small_var_projected.output,
+    output:
+        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "{label}_both.bed",
+    conda:
+        "envs/minimap.yml"
+    shell:
+        """
+        intersectBed -b {input.vcf} -a {input.bed} -u > {output}
+        """
+
+
+rule get_variants_in_vbench:
+    input:
+        vcf=rules.filter_variants.output,
+        bed=rules.small_var_projected.output,
+    output:
+        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "{label}_vbench.vcf.gz",
+    conda:
+        "envs/minimap.yml"
+    shell:
+        """
+        subtractBed -a {input.vcf} -b {input.bed} -A | gzip -c > {output}
+        """
+
+
+rule get_variants_in_gbench:
+    input:
+        vcf=rules.filter_variants.output,
+        bed=rules.small_var_projected.output,
+    output:
+        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "{label}_gbench.bed",
+    conda:
+        "envs/minimap.yml"
+    shell:
+        """
+        subtractBed -b {input.vcf} -a {input.bed} -A > {output}
+        """
+
+
 rule all:
     input:
         expand(
-            rules.format_projected.output,
+            rules.get_variants_in_both_bench.output
+            + rules.get_variants_in_both_projected.output
+            + rules.get_variants_in_vbench.output
+            + rules.get_variants_in_gbench.output,
             ref=["GRCh38"],
             hap=HAPLOTYPES,
             mapped_hap=HAPLOTYPES,
+            label=["FP", "FN"],
         ),
