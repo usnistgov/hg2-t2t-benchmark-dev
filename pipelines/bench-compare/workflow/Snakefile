@@ -421,7 +421,7 @@ rule summarize_bench:
             mapped_hap=HAPLOTYPES,
             label=["FP", "FN"],
         ),
-        gbench=expand(
+        vbench=expand(
             rules.get_variants_in_both_bench.output
             + rules.get_variants_in_vbench.output,
             allow_missing=True,
@@ -435,7 +435,7 @@ rule summarize_bench:
     conda:
         "envs/r.yml"
     script:
-        "scripts/R/format.R"
+        "scripts/R/summarize.R"
 
 
 rule all:

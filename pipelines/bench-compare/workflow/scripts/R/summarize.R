@@ -30,6 +30,12 @@ read_bed <- function(path) {
     split_path(path, "bed")
 }
 
+split_format <- function(format, sample) {
+  x <- str_split_1(sample, ":")
+  names(x) <- str_split_1(format, ":")
+  tibble(blt = x[["BLT"]], bd = x[["BD"]], gt = x[["GT"]], bk = x[["BK"]])
+}
+
 snakemake@input[["gbench"]] %>%
   keep(~ str_detect(.x, "bed")) %>%
   map_dfr(read_bed) %>%
@@ -51,4 +57,11 @@ snakemake@input[["vbench"]] %>%
     )
   ) %>%
   arrange(chrom, start) %>%
+  mutate(start = start - 1, end = start + reflen) %>%
+  relocate(chrom, start, end) %>%
+  mutate(truth = map2(format, truth, split_format)) %>%
+  unnest(truth, names_sep = "_") %>%
+  mutate(query = map2(format, query, split_format)) %>%
+  unnest(query, names_sep = "_") %>%
+  select(-format) %>%
   write_tsv(snakemake@output[["vbench"]])
