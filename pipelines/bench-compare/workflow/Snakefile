@@ -411,15 +411,36 @@ rule get_variants_in_gbench:
         """
 
 
-rule all:
+rule summarize_bench:
     input:
-        expand(
-            rules.get_variants_in_both_bench.output
-            + rules.get_variants_in_both_projected.output
-            + rules.get_variants_in_vbench.output
+        gbench=expand(
+            rules.get_variants_in_both_projected.output
             + rules.get_variants_in_gbench.output,
-            ref=["GRCh38"],
+            allow_missing=True,
             hap=HAPLOTYPES,
             mapped_hap=HAPLOTYPES,
             label=["FP", "FN"],
+        ),
+        gbench=expand(
+            rules.get_variants_in_both_bench.output
+            + rules.get_variants_in_vbench.output,
+            allow_missing=True,
+            hap=HAPLOTYPES,
+            mapped_hap=HAPLOTYPES,
+            label=["FP", "FN"],
+        ),
+    output:
+        vbench=final_dir / "variant_summary" / "vbench.tsv.gz",
+        gbench=final_dir / "variant_summary" / "gbench.tsv.gz",
+    conda:
+        "envs/r.yml"
+    script:
+        "scripts/R/format.R"
+
+
+rule all:
+    input:
+        expand(
+            rules.summarize_bench.output,
+            ref=["GRCh38"],
         ),
