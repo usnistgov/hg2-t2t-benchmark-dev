@@ -321,24 +321,18 @@ rule get_small_variants:
         "envs/minimap.yml"
     shell:
         """
-        intersectBed -a {input.vcf} -b {input.bed} -header | \
+        intersectBed -a {input.vcf} -b {input.bed} | \
         gzip -c > {output}
         """
 
 
-rule filter_variants:
+rule vcf_to_bed:
     input:
         rules.get_small_variants.output,
     output:
-        res_ref_dir / "small_vars_{label}.vcf.gz"
-    params:
-        temp=lambda _, output: str(output).replace(".gz", ""),
-    shell:
-        """
-        gunzip -c {input} | grep '^#' > {params.temp} &&
-        gunzip -c {input} | grep ':{wildcards.label}' >> {params.temp} &&
-        gzip {params.temp}
-        """
+        res_ref_dir / "small_vars.bed.gz"
+    script:
+        "scripts/python/vcf_to_bed.py"
 
 
 rule small_var_projected:
@@ -351,83 +345,83 @@ rule small_var_projected:
         "envs/minimap.yml"
     shell:
         """
-        intersectBed -a {input.bed} -b {input.regions} | gzip -c > {output}
+        intersectBed -a {input.bed} -b {input.regions} -wa | gzip -c > {output}
         """
 
 
-rule get_variants_in_both_bench:
+rule get_vbench_overlaps:
     input:
-        vcf=rules.filter_variants.output,
-        bed=rules.small_var_projected.output,
+        vbench=rules.vcf_to_bed.output,
+        gbench=rules.small_var_projected.output,
     output:
-        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "{label}_both.vcf.gz",
+        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "both_vbench.bed.gz",
     conda:
         "envs/minimap.yml"
     shell:
         """
-        intersectBed -a {input.vcf} -b {input.bed} -u | gzip -c > {output}
+        intersectBed -a {input.vbench} -b {input.gbench} -loj | gzip -c > {output}
         """
 
 
-rule get_variants_in_both_projected:
+rule get_gbench_overlaps:
     input:
-        vcf=rules.filter_variants.output,
-        bed=rules.small_var_projected.output,
+        vbench=rules.vcf_to_bed.output,
+        gbench=rules.small_var_projected.output,
     output:
-        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "{label}_both.bed",
+        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "both_gbench.bed.gz",
     conda:
         "envs/minimap.yml"
     shell:
         """
-        intersectBed -b {input.vcf} -a {input.bed} -u > {output}
+        intersectBed -b {input.vbench} -a {input.gbench} -loj | gzip -c > {output}
         """
 
 
-rule get_variants_in_vbench:
-    input:
-        vcf=rules.filter_variants.output,
-        bed=rules.small_var_projected.output,
-    output:
-        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "{label}_vbench.vcf.gz",
-    conda:
-        "envs/minimap.yml"
-    shell:
-        """
-        subtractBed -a {input.vcf} -b {input.bed} -A | gzip -c > {output}
-        """
-
-
-rule get_variants_in_gbench:
-    input:
-        vcf=rules.filter_variants.output,
-        bed=rules.small_var_projected.output,
-    output:
-        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "{label}_gbench.bed",
-    conda:
-        "envs/minimap.yml"
-    shell:
-        """
-        subtractBed -b {input.vcf} -a {input.bed} -A > {output}
-        """
+#rule get_variants_in_vbench:
+#    input:
+#        vcf=rules.filter_variants.output,
+#        bed=rules.small_var_projected.output,
+#    output:
+#        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "{label}_vbench.vcf.gz",
+#    conda:
+#        "envs/minimap.yml"
+#    shell:
+#        """
+#        subtractBed -a {input.vcf} -b {input.bed} -A | gzip -c > {output}
+#        """
+#
+#
+#rule get_variants_in_gbench:
+#    input:
+#        vcf=rules.filter_variants.output,
+#        bed=rules.small_var_projected.output,
+#    output:
+#        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "{label}_gbench.bed",
+#    conda:
+#        "envs/minimap.yml"
+#    shell:
+#        """
+#        subtractBed -b {input.vcf} -a {input.bed} -A > {output}
+#        """
 
 
 rule summarize_bench:
     input:
         gbench=expand(
-            rules.get_variants_in_both_projected.output
-            + rules.get_variants_in_gbench.output,
+            rules.get_gbench_overlaps.output,
+            #+ rules.get_variants_in_gbench.output,
             allow_missing=True,
             hap=HAPLOTYPES,
             mapped_hap=HAPLOTYPES,
-            label=["FP", "FN"],
+            #label=["FP", "FN"],
         ),
         vbench=expand(
-            rules.get_variants_in_both_bench.output
-            + rules.get_variants_in_vbench.output,
+            rules.get_vbench_overlaps.output,
+            #+ rules.get_variants_in_vbench.output,
             allow_missing=True,
             hap=HAPLOTYPES,
             mapped_hap=HAPLOTYPES,
-            label=["FP", "FN"],
+            #label=["FP", "FN"],
         ),
     output:
         vbench=final_dir / "variant_summary" / "vbench.tsv.gz",

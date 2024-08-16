@@ -33,14 +33,22 @@ readr::read_tsv(path,
                                  "thickEnd", "itemRgb", "consensus", "variant",
                                  "altName")
                        ) %>%
-  ## mutate(
-  ##   regions = str_replace(regions, "Regions=", ""),
-  ##   query_phase = str_extract(SAMPLE, "(.*?):", group = 1),
-  ##   bench_phase = str_extract(TRUTH, "(.*?):", group = 1),
-  ##   data = sprintf(data_fmt, REF, ALT, dissimilarity, regions, query_phase, bench_phase)
-  ## ) %>%
-  ## filter(str_detect(regions, "notinsegdup")) %>%
-  ## select(chrom, start, end, data) %>%
   arrange(chromidx, chrom, start, end) %>%
-  select(-chromidx) %>%
+  select(-chromidx, -score, -thickStart, -thickEnd, -itemRgb) %>%
+  mutate(
+    q100 = str_extract(name, "chr[0-9XY]+_[PM]ATERNAL_[0-9]+_([ACGT\\*]+)_[ACGT\\*]+", 1),
+    hprc = str_extract(name, "chr[0-9XY]+_[PM]ATERNAL_[0-9]+_[ACGT\\*]+_([ACGT\\*]+)", 1),
+    # variants with "*" are "between bases" and thus have zero length
+    q100_len = if_else(q100 == "*", 0, str_length(q100)),
+    hprc_len = if_else(hprc == "*", 0, str_length(hprc)),
+    realstart = start,
+    # for "*" variants on the q100 asm, shift end by 1, which usually will make it equal to
+    # start unless the liftover did something weird
+    realend = if_else(q100 == "*", pmax(end - 1, start), end),
+    # some variants are near the beginning of a chromosome
+    start = pmax(realend - 50, 0),
+    end = realend + 50,
+  ) %>%
+  relocate(chrom, start, end, realstart, realend) %>%
+  filter(!(q100_len >= 50 | hprc_len >= 50)) %>%
   readr::write_tsv(snakemake@output[[1]], col_names = FALSE)
