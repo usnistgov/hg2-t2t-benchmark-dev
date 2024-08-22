@@ -17,11 +17,12 @@ int2chr <- function(i, suffix) {
 ##   sprintf("%s=%%s", .) %>%
 ##   str_c(collapse = ":")
 
-path <- snakemake@input[[1]]
+bed_path <- snakemake@input[["bed"]]
+genome <- read_tsv(snakemake@input[["genome"]], col_names = c("chrom", "chr_length"), col_types = "ci")
 
-chrom_suffix <- if_else(str_detect(path, "pat"), "PATERNAL", "MATERNAL")
+# chrom_suffix <- if_else(str_detect(bed_path, "pat"), "PATERNAL", "MATERNAL")
 
-readr::read_tsv(path,
+readr::read_tsv(bed_path,
                 col_types = "ciidc",
                 col_names = c("chrom", "start", "end", "dissimilarity", "data")
                 ) %>%
@@ -35,20 +36,23 @@ readr::read_tsv(path,
                        ) %>%
   arrange(chromidx, chrom, start, end) %>%
   select(-chromidx, -score, -thickStart, -thickEnd, -itemRgb) %>%
+  left_join(genome, by = "chrom") %>%
   mutate(
     q100 = str_extract(name, "chr[0-9XY]+_[PM]ATERNAL_[0-9]+_([ACGT\\*]+)_[ACGT\\*]+", 1),
     hprc = str_extract(name, "chr[0-9XY]+_[PM]ATERNAL_[0-9]+_[ACGT\\*]+_([ACGT\\*]+)", 1),
     # variants with "*" are "between bases" and thus have zero length
     q100_len = if_else(q100 == "*", 0, str_length(q100)),
     hprc_len = if_else(hprc == "*", 0, str_length(hprc)),
+    # TODO see the original error bed, it looks like we need to actually add 1 to start and not end
     realstart = start,
     # for "*" variants on the q100 asm, shift end by 1, which usually will make it equal to
     # start unless the liftover did something weird
     realend = if_else(q100 == "*", pmax(end - 1, start), end),
     # some variants are near the beginning of a chromosome
-    start = pmax(realend - 50, 0),
-    end = realend + 50,
+    start = pmax(realstart - 50, 0),
+    end = pmin(realend + 50, chr_length)
   ) %>%
+  select(-chr_length) %>%
   relocate(chrom, start, end, realstart, realend) %>%
   filter(!(q100_len >= 50 | hprc_len >= 50)) %>%
   readr::write_tsv(snakemake@output[[1]], col_names = FALSE)

@@ -13,24 +13,27 @@ split_path <- function(df, path) {
 gcols <- c("gchrom", "gstart", "gend", "realstart", "realend", 
 	   "overlap", "variant", 
            "strand", "error_type", "gtype", "original",
-	   "q100", "hprc", "q100_len", "hprc_len"
+	   "q100", "hprc", "q100_len", "hprc_len", "seq"
 	   )
 
-gtypes = "ciiiidcccccccii"
+gtypes = "ciiiidccccccciic"
 
-vcols <- c("vchrom", "vstart", "vend", "ref", "alt", "regions", 
+vcols <- c("vchrom", "vstart", "vend", "id", "ref", "alt", "regions", 
 	   "truth_blt", "truth_bd", "truth_gt", "truth_bk",
 	   "query_blt", "query_bd", "query_gt", "query_bk",
-	   "reflen", "altlen", "vtype"
+	   "truth_alt", "truth_len", 
+	   "query1_alt", "query1_type", "query1_len",
+	   "query2_alt", "query2_type", "query2_len"
 	   )
 
-vtypes <- "ciiccccccccccciic"
+vtypes <- "ciiicccccccccccciccicci"
 
 read_vbench <- function(path) {
   read_tsv(
     path,
     col_types = c(vtypes, gtypes),
     col_names = c(vcols, gcols),
+    na = ".",
   ) %>%
     split_path(path)
 }
@@ -40,6 +43,7 @@ read_gbench <- function(path) {
     path,
     col_types = c(gtypes, vtypes),
     col_names = c(gcols, vcols),
+    na = ".",
   ) %>%
     split_path(path)
 }

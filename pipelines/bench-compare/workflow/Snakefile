@@ -37,6 +37,9 @@ ERRORS = {
     "mat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v1.1/benchmark/results/hprc_hg002_curated_vs_v1.1/benchmatv1.1/hg002_curated_mat.errortype.hg002v1.1.bed",
 }
 
+wildcard_constraints:
+    mapped_hap="(mat|pat)"
+
 
 ################################################################################
 # download a bunch of stuff
@@ -110,6 +113,14 @@ rule make_asm_genome:
         samtools faidx {input} -o - | \
         cut -f1-2 > {output}
         """
+
+
+use rule make_asm_genome as make_ref_genome with:
+    input:
+        rules.download_ref.output,
+    output:
+        res_ref_dir / "genome.txt",
+        
 
 # for testing
 rule list_test_asm_chrs:
@@ -197,6 +208,15 @@ use rule index_test_asm as index_ref with:
         rules.download_ref.output,
     output:
         rules.download_ref.output[0] + ".fai",
+
+
+rule unzip_fasta:
+    input:
+        rules.download_ref.output,
+    output:
+        res_ref_dir / "unzipped.fa"
+    shell:
+        "gunzip -c {input} > {output}"
 
 
 rule run_minimap:
@@ -298,13 +318,34 @@ rule run_liftover:
 
 rule format_projected:
     input:
-        rules.run_liftover.output.projected,
+        bed=rules.run_liftover.output.projected,
+        genome=rules.make_ref_genome.output,
     output:
         final_dir / "projected" / "hprc_{hap}_q100_{mapped_hap}_projected.bed.gz",
     conda:
         "envs/r.yml"
     script:
         "scripts/R/format.R"
+
+
+rule nuc_projections:
+    input:
+        bed=rules.format_projected.output,
+        fa=rules.unzip_fasta.output,
+    output:
+        final_dir / "projected" / "hprc_{hap}_q100_{mapped_hap}_projected_nuc.bed.gz",
+    conda:
+        "envs/minimap.yml"
+    shell:
+        """
+        gunzip -c {input.bed} | \
+        cut -f 1,2,3 | \
+        nucBed -bed stdin -fi {input.fa} -seq | \
+        cut -f13 | \
+        tail -n+2 | \
+        paste <(gunzip -c {input.bed}) - | \
+        gzip -c > {output}
+        """
 
 
 ################################################################################
@@ -330,14 +371,32 @@ rule vcf_to_bed:
     input:
         rules.get_small_variants.output,
     output:
-        res_ref_dir / "small_vars.bed.gz"
+        res_ref_dir / "small_vars_{mapped_hap}.bed.gz"
     script:
         "scripts/python/vcf_to_bed.py"
 
 
+rule filter_fn_fp:
+    input:
+        rules.vcf_to_bed.output,
+    output:
+        res_ref_dir / "small_vars_{mapped_hap}_fp_fn.bed.gz"
+    shell:
+        "gunzip -c {input} | grep -E '	(FP|FN)' | gzip -c > {output}"
+
+
+rule filter_tp:
+    input:
+        rules.vcf_to_bed.output,
+    output:
+        res_ref_dir / "small_vars_{mapped_hap}_tp.bed.gz"
+    shell:
+        "gunzip -c {input} | grep -v -E '	(FP|FN)' | gzip -c > {output}"
+
+
 rule small_var_projected:
     input:
-        bed=rules.format_projected.output,
+        bed=rules.nuc_projections.output,
         regions=rules.download_bench_bed.output,
     output:
         final_dir / "projected" / "hprc_{hap}_q100_{mapped_hap}_projected_smallvar.bed.gz",
@@ -351,7 +410,7 @@ rule small_var_projected:
 
 rule get_vbench_overlaps:
     input:
-        vbench=rules.vcf_to_bed.output,
+        vbench=rules.filter_fn_fp.output,
         gbench=rules.small_var_projected.output,
     output:
         final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "both_vbench.bed.gz",
@@ -365,7 +424,7 @@ rule get_vbench_overlaps:
 
 rule get_gbench_overlaps:
     input:
-        vbench=rules.vcf_to_bed.output,
+        vbench=rules.filter_fn_fp.output,
         gbench=rules.small_var_projected.output,
     output:
         final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "both_gbench.bed.gz",
@@ -437,4 +496,9 @@ rule all:
         expand(
             rules.summarize_bench.output,
             ref=["GRCh38"],
+        ),
+        expand(
+            rules.filter_tp.output,
+            ref=["GRCh38"],
+            mapped_hap=HAPLOTYPES,
         ),
