@@ -29,6 +29,7 @@ BENCH = {
     "GRCh38": {
         "vcf": "https://giab-data.s3.amazonaws.com/defrabb_runs/20240716_v0.018_HG002Q100/results/evaluations/happy/GRCh38_HG002_T~T2TQ100v1.1_Q~HPRCcur.20211005-DB-gtfix_TR~dipbed_GRCh38_HG002-T2TQ100v1.1-dipz2k_smvar-excluded/GRCh38_HG2-HPRCcur.20211005-DB-gtfix_HG2-T2TQ100-V1.1_smvar_dipcall-z2k.vcf.gz",
         "bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.018-20240716/GRCh38_HG2-T2TQ100-V1.1_smvar.benchmark.bed",
+        "query_vcf": "https://giab-data.s3.amazonaws.com/giab-test-data/benchmarksets/HG002/draft-benchmarks/20220610_v0.008_HG002-HPRC-GRCh38/GRCh38_HG2-HPRC-20211005_dipcall-z2k_gtfix.vcf.gz",
     },
 }
 
@@ -79,6 +80,13 @@ use rule download_asm as download_bench_vcf with:
         src_dir / "references" / "q100_bench_{ref}.vcf.gz",
     params:
         url=lambda w: BENCH[w.ref]["vcf"],
+
+
+use rule download_asm as download_query_vcf with:
+    output:
+        src_dir / "references" / "q100_query_{ref}.vcf.gz",
+    params:
+        url=lambda w: BENCH[w.ref]["query_vcf"],
 
 
 use rule download_asm as download_bench_bed with:
@@ -434,34 +442,6 @@ rule get_gbench_overlaps:
         """
         intersectBed -b {input.vbench} -a {input.gbench} -loj | gzip -c > {output}
         """
-
-
-#rule get_variants_in_vbench:
-#    input:
-#        vcf=rules.filter_variants.output,
-#        bed=rules.small_var_projected.output,
-#    output:
-#        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "{label}_vbench.vcf.gz",
-#    conda:
-#        "envs/minimap.yml"
-#    shell:
-#        """
-#        subtractBed -a {input.vcf} -b {input.bed} -A | gzip -c > {output}
-#        """
-#
-#
-#rule get_variants_in_gbench:
-#    input:
-#        vcf=rules.filter_variants.output,
-#        bed=rules.small_var_projected.output,
-#    output:
-#        final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "{label}_gbench.bed",
-#    conda:
-#        "envs/minimap.yml"
-#    shell:
-#        """
-#        subtractBed -b {input.vcf} -a {input.bed} -A > {output}
-#        """
 
 
 rule summarize_bench:
