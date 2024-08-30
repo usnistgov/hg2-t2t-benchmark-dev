@@ -370,8 +370,8 @@ rule get_small_variants:
         "envs/minimap.yml"
     shell:
         """
-        intersectBed -a {input.vcf} -b {input.bed} | \
-        gzip -c > {output}
+        intersectBed -a {input.vcf} -b {input.bed} -header | \
+        bgzip -c > {output}
         """
 
 
@@ -383,18 +383,54 @@ use rule get_small_variants as get_small_dipcall_variants with:
         res_ref_dir / "small_dipcall_vars.vcf.gz"
 
 
+# remove the AD field from the dipcall vcf so that the merge doesn't clobber
+# the format field below
+rule strip_gt_dipcall_variants:
+    input:
+        rules.get_small_dipcall_variants.output,
+    output:
+        res_ref_dir / "small_dipcall_vars_gtonly.vcf.gz"
+    conda:
+        "envs/bcftools.yml"
+    shell:
+        """
+        bcftools annotate -x 'FORMAT/AD' {input} | bgzip -c > {output}
+        """
+
+
+rule index_small_variants:
+    input:
+        rules.get_small_variants.output,
+    output:
+        rules.get_small_variants.output[0] + ".tbi"
+    conda:
+        "envs/minimap.yml"
+    shell:
+        """
+        tabix {input}
+        """
+
+
+use rule index_small_variants as index_small_dipcall_variants with:
+    input:
+        rules.strip_gt_dipcall_variants.output,
+    output:
+        rules.strip_gt_dipcall_variants.output[0] + ".tbi"
+
+
 rule merge_happy_dipcall:
     input:
+        _happy_idx=rules.index_small_variants.output,
+        _dipcall_idx=rules.index_small_dipcall_variants.output,
         happy=rules.get_small_variants.output,
-        dipcall=rules.get_small_dipcall_variants.output
+        dipcall=rules.strip_gt_dipcall_variants.output
     output:
         res_ref_dir / "small_merged.vcf.gz"
     conda:
         "envs/bcftools.yml"
     shell:
         """
-        bcftools annotate -x 'FORMAT/AD' {input.dipcall} | \
-        bcftools merge {input.happy) - | \
+        bcftools merge {input.happy} {input.dipcall} | \
         awk 'OFS="\t" {{ if($9!="GT") {{print $0}}}}' | \
         bgzip -c > {output}
         """
@@ -415,7 +451,7 @@ rule phase_happy:
 
 rule vcf_to_bed:
     input:
-        rules.get_small_variants.output,
+        rules.phase_happy.output,
     output:
         res_ref_dir / "small_vars_{mapped_hap}.bed.gz"
     script:

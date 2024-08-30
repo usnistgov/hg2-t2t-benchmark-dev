@@ -99,9 +99,11 @@ read_data <- function(happy_path, merged_path) {
       ),
       ) %>%
     select(-dipcall)
+
   # keep this around so it is easy to add back when done
   df_happy_meta <- df_happy %>%
     select(id, qual, filter, info, format)
+
   list(
     gt = df_gt,
     meta = df_happy_meta
@@ -471,7 +473,7 @@ fix_balanced_groups <- function(df) {
   # Loop through each variant group and attempt to fix
   df_fixed <- df_precomputed %>%
     group_by(chrom, .vargroup) %>%
-    group_map(fix_var_group) %>%
+    group_map(fix_var_groups) %>%
     bind_rows() %>%
     mutate(.success = .pat_balanced & .mat_balanced & .all_matched & .all_phased)
 
@@ -621,8 +623,9 @@ write_vcf <- function(df, meta, out) {
     write_tsv(out, col_names = FALSE)
 }
 
-read_result <- read_data("small_happy.vcf.gz", "merged_hprc_gt.vcf.gz")
+read_result <- read_data(snakemake@input[["happy"]], snakemake@input[["merged"]])
 fix_result <- fix_all(read_result$gt)
+
 
 ensure(
   nrow(fix_result$fixed) + nrow(fix_result$unfixable) == nrow(read_result$gt),
@@ -634,7 +637,7 @@ fix_result$fixed %>%
     query = str_replace(query, "^[^:]+", ""),
     query = paste0(query_gt, query)
   ) %>%
-  write_vcf(read_result$meta, "fixed.vcf.gz")
+  write_vcf(read_result$meta, snakemake@output[["fixed"]])
 
 fix_result$unfixable %>%
-  write_vcf(read_result$meta, "notfixed.vcf.gz")
+  write_vcf(read_result$meta, snakemake@output[["notfixed"]])
