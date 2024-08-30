@@ -22,11 +22,10 @@ vcols <- c("vchrom", "vstart", "vend", "id", "ref", "alt", "regions",
 	   "truth_blt", "truth_bd", "truth_gt", "truth_bk",
 	   "query_blt", "query_bd", "query_gt", "query_bk",
 	   "truth_alt", "truth_len", 
-	   "query1_alt", "query1_type", "query1_len",
-	   "query2_alt", "query2_type", "query2_len"
+	   "query_alt", "query_len"
 	   )
 
-vtypes <- "ciiicccccccccccciccicci"
+vtypes <- "ciiiccccccccccccici"
 
 read_vbench <- function(path) {
   read_tsv(

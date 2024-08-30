@@ -451,7 +451,7 @@ rule phase_happy:
 
 rule vcf_to_bed:
     input:
-        rules.phase_happy.output,
+        rules.phase_happy.output.fixed,
     output:
         res_ref_dir / "small_vars_{mapped_hap}.bed.gz"
     script:

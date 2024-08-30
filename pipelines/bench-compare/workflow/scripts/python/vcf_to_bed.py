@@ -18,66 +18,44 @@ def lookup_maybe(a, b, k):
     return b[a.index(k)] if k in a else "."
 
 
-def select_alt(i, alts):
-    if i == 0:
-        return "."
-    else:
-        return alts[i-1]
-
-
-def get_query_alt(gt, alt):
-    g = re.match("([0-9])[/|]([0-9])", gt)
-    if g is not None:
-        a = alt.split(",")
-        return (select_alt(int(g[1]), a), select_alt(int(g[2]), a))
-    else:
-        return (".", ".")
-
-
-def get_variant_type(tlen, qlen):
-    if tlen == "." or qlen == ".":
-        return "."
-    else:
-        if tlen == 1 and qlen == 1:
-            return "SNV"
-        elif tlen >= 50 or qlen >= 50:
-            return "SV"
-        elif tlen > 1 or qlen > 1 and tlen != qlen:
-            return "INDEL"
-        else:
-            return "UNK"
-
-
-def get_variant_meta(tlen, query):
-    qlen = "." if query == "." else len(query)
-    vtype = get_variant_type(tlen, qlen)
-    return vtype, str(qlen)
+def lookup_alt(fmt, sample, alts):
+    """Return the alt for a given sample column and desired haplotype."""
+    alt = "."
+    length = "."
+    gt = lookup_maybe(fmt, sample, "GT")
+    # treat halfcalls as null
+    if not (gt == "0|." or gt == ".|0"):
+        # ASSUME anything unphased is a hom (in which case it doesn't matter)
+        m = re.match("([0-9])[/|]([0-9])", gt)
+        if m is not None:
+            i = int(m[1 if is_pat else 2])
+            if i > 0:
+                alt = alts[i-1]
+                length = str(len(alt))
+    return (gt, alt, length)
 
 
 def star_maybe(s):
     return "*" if s == "" else s
 
 
-def trim_ref(start, ref, truth, query1, query2):
+def trim_ref(start, ref, truth, query):
+    """Shave off extra bases on the front of ref and alts."""
     n = 0
     for r in ref:
         try:
             if truth != "." and truth[n] != r:
                 break
-            if query1 != "." and query1[n] != r:
-                break
-            if query2 != "." and query2[n] != r:
+            if query != "." and query[n] != r:
                 break
         except IndexError:
             break
         n = n + 1
     if truth != ".":
         truth = truth[n:]
-    if query1 != ".":
-        query1 = query1[n:]
-    if query2 != ".":
-        query2 = query2[n:]
-    return (start + n, ref[n:], truth, query1, query2)
+    if query != ".":
+        query = query[n:]
+    return (start + n, star_maybe(ref[n:]), star_maybe(truth), star_maybe(query))
 
 
 with gzip.open(ip, "rt") as i, gzip.open(op, "wt") as o:
@@ -102,58 +80,29 @@ with gzip.open(ip, "rt") as i, gzip.open(op, "wt") as o:
             truth = s[9].split(":")
             query = s[10].split(":")
 
-            # next, split the ALT field so that we are only left with data relevant
-            # for the desired haplotype
+            # Split the alt field apart based on the haplotype we want.
+            # ASSUME - ALL VARIANTS ARE PHASED; the index in the GT field
+            # will be selected naively based on if it either the first
+            # or second number (pat or mat resp.). A slash is allowed
+            # but this is assumed to only apply to hom GT fields if present
+            # at all.
             truth_blt = lookup_maybe(fmt, truth, "BLT")
-            truth_gt = lookup_maybe(fmt, truth, "GT")
-            query_gt = lookup_maybe(fmt, query, "GT")
-
             alts = alt.split(",")
-            query_alts = get_query_alt(query_gt, alt)
 
-            if truth_blt == "het":
-                # if truth is het, either keep or discard depending on which hap we want
+            truth_gt, truth_alt, tlen = lookup_alt(fmt, truth, alts)
+            query_gt, query_alt, qlen = lookup_alt(fmt, query, alts)
+            
+            # Skip if neither allele is an alt, which might happen if both are ref
+            # and/or a halfcall or null value
+            if truth_alt == "." and query_alt == ".":
+                continue
 
-                # ASSUME GT will always be defined for this case
-                gt = re.match("([0-9])[/|]([0-9])", truth_gt)
-                if gt is None:
-                    raise ValueError("truth gt could not be found for het")
-                pi = int(gt[1])
-                mi = int(gt[2])
-
-                # filtering paternal haplotype, paternal truth is not alt
-                if is_pat and pi > 0:
-                    truth_alt = alts[pi-1]
-                # filtering maternal haplotype, maternal truth is not alt
-                elif not is_pat and mi > 0:
-                    truth_alt = alts[mi-1]
-                # if neither of the above, then the desired hap must be ref in which
-                # case we don't want it
-                else:
-                    # TODO keep everything
-                    continue
-
-            elif truth_blt == "homalt":
-                # if truth is hom, always keep the line but split the alt field 
-
-                # ASSUME this is defined for this case
-                gt = re.match("([0-9])[/|]([0-9])", truth_gt)
-                if gt is None:
-                    raise ValueError("truth gt could not be found for homalt")
-                truth_alt = alts[int(gt[1])-1]
-
-            else:
-                # otherwise this line is a FP with either nocall/halfcall for truth
-                truth_alt = "."
-
-            tlen = "." if truth_alt == "." else len(truth_alt)
-
-            start_, ref_, truth_alt_, query1_alt, query2_alt = trim_ref(
+            # Shave off prefix bases that are common to the ref/truth/query
+            start_, ref_, truth_alt_, query_alt_ = trim_ref(
                 start,
                 ref,
                 truth_alt,
-                query_alts[0],
-                query_alts[1],
+                query_alt,
             )
 
             end = start_ + len(ref_)
@@ -165,7 +114,7 @@ with gzip.open(ip, "rt") as i, gzip.open(op, "wt") as o:
 
                 str(id),
 
-                star_maybe(ref_),
+                ref_,
                 alt,
                 info,
 
@@ -179,16 +128,12 @@ with gzip.open(ip, "rt") as i, gzip.open(op, "wt") as o:
                 query_gt,
                 lookup_maybe(fmt, query, "BK"),
 
-                star_maybe(truth_alt_),
-                str(tlen),
+                truth_alt_,
+                tlen,
 
-                # 4 columns for each (potential) query field:
-                # alt allele, variant type (INDEL, SNV), and alt length
-                star_maybe(query1_alt),
-                *get_variant_meta(tlen, query_alts[0]),
-
-                star_maybe(query2_alt),
-                *get_variant_meta(tlen, query_alts[1]),
+                query_alt_,
+                qlen,
+                
             ]
 
             o.write("\t".join(newline) + "\n")
