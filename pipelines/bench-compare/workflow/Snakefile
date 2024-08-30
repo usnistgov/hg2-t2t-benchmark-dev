@@ -375,6 +375,44 @@ rule get_small_variants:
         """
 
 
+use rule get_small_variants as get_small_dipcall_variants with:
+    input:
+        vcf=rules.download_query_vcf.output,
+        bed=rules.download_bench_bed.output,
+    output:
+        res_ref_dir / "small_dipcall_vars.vcf.gz"
+
+
+rule merge_happy_dipcall:
+    input:
+        happy=rules.get_small_variants.output,
+        dipcall=rules.get_small_dipcall_variants.output
+    output:
+        res_ref_dir / "small_merged.vcf.gz"
+    conda:
+        "envs/bcftools.yml"
+    shell:
+        """
+        bcftools annotate -x 'FORMAT/AD' {input.dipcall} | \
+        bcftools merge {input.happy) - | \
+        awk 'OFS="\t" {{ if($9!="GT") {{print $0}}}}' | \
+        bgzip -c > {output}
+        """
+
+
+rule phase_happy:
+    input:
+        happy=rules.get_small_variants.output,
+        merged=rules.merge_happy_dipcall.output,
+    output:
+        fixed=res_ref_dir / "happy_phased_fixed.vcf.gz",
+        notfixed=res_ref_dir / "happy_phased_notfixed.vcf.gz",
+    conda:
+        "envs/r.yml"
+    script:
+        "scripts/R/phase_happy.R"
+
+
 rule vcf_to_bed:
     input:
         rules.get_small_variants.output,
