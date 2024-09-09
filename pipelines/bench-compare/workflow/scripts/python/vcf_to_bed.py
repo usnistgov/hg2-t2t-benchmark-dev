@@ -21,7 +21,6 @@ def lookup_maybe(a, b, k):
 def lookup_alt(fmt, sample, alts):
     """Return the alt for a given sample column and desired haplotype."""
     alt = "."
-    length = "."
     gt = lookup_maybe(fmt, sample, "GT")
     # treat halfcalls as null
     if not (gt == "0|." or gt == ".|0"):
@@ -31,12 +30,19 @@ def lookup_alt(fmt, sample, alts):
             i = int(m[1 if is_pat else 2])
             if i > 0:
                 alt = alts[i-1]
-                length = str(len(alt))
-    return (gt, alt, length)
+    return (gt, alt)
 
 
 def star_maybe(s):
     return "*" if s == "" else s
+
+
+def trim_alt_inner(s, n):
+    if s == ".":
+        return (".", ".")
+    else:
+        q = s[n:]
+        return (star_maybe(q), str(len(q)))
 
 
 def trim_ref(start, ref, truth, query):
@@ -51,11 +57,16 @@ def trim_ref(start, ref, truth, query):
         except IndexError:
             break
         n = n + 1
-    if truth != ".":
-        truth = truth[n:]
-    if query != ".":
-        query = query[n:]
-    return (start + n, star_maybe(ref[n:]), star_maybe(truth), star_maybe(query))
+    _ref = ref[n:]
+    newstart = start + n
+    end = newstart + len(_ref)
+    return (
+        str(newstart), 
+        str(end),
+        star_maybe(_ref),
+        trim_alt_inner(truth, n),
+        trim_alt_inner(query, n),
+    )
 
 
 with gzip.open(ip, "rt") as i, gzip.open(op, "wt") as o:
@@ -89,8 +100,8 @@ with gzip.open(ip, "rt") as i, gzip.open(op, "wt") as o:
             truth_blt = lookup_maybe(fmt, truth, "BLT")
             alts = alt.split(",")
 
-            truth_gt, truth_alt, tlen = lookup_alt(fmt, truth, alts)
-            query_gt, query_alt, qlen = lookup_alt(fmt, query, alts)
+            truth_gt, truth_alt = lookup_alt(fmt, truth, alts)
+            query_gt, query_alt = lookup_alt(fmt, query, alts)
             
             # Skip if neither allele is an alt, which might happen if both are ref
             # and/or a halfcall or null value
@@ -98,19 +109,17 @@ with gzip.open(ip, "rt") as i, gzip.open(op, "wt") as o:
                 continue
 
             # Shave off prefix bases that are common to the ref/truth/query
-            start_, ref_, truth_alt_, query_alt_ = trim_ref(
+            start_, end_, ref_, truth_, query_  = trim_ref(
                 start,
                 ref,
                 truth_alt,
                 query_alt,
             )
 
-            end = start_ + len(ref_)
-
             newline = [
                 chrom,
-                str(start_),
-                str(end),
+                start_,
+                end_,
 
                 str(id),
 
@@ -128,11 +137,8 @@ with gzip.open(ip, "rt") as i, gzip.open(op, "wt") as o:
                 query_gt,
                 lookup_maybe(fmt, query, "BK"),
 
-                truth_alt_,
-                tlen,
-
-                query_alt_,
-                qlen,
+                *truth_,
+                *query_,
                 
             ]
 

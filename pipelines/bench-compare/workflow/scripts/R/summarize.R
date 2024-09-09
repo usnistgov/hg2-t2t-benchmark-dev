@@ -10,22 +10,22 @@ split_path <- function(df, path) {
   )
 }
 
-gcols <- c("gchrom", "gstart", "gend", "realstart", "realend", 
+gcols <- c("gchrom", "gstart", "gend", "realstart", "realend", "gid",
 	   "overlap", "variant", 
            "strand", "error_type", "gtype", "original",
 	   "q100", "hprc", "q100_len", "hprc_len", "seq"
 	   )
 
-gtypes = "ciiiidccccccciic"
+gtypes = "ciiiiidccccccciic"
 
-vcols <- c("vchrom", "vstart", "vend", "id", "ref", "alt", "regions", 
+vcols <- c("vchrom", "vstart", "vend", "vid", "ref", "alt", "regions", 
 	   "truth_blt", "truth_bd", "truth_gt", "truth_bk",
 	   "query_blt", "query_bd", "query_gt", "query_bk",
 	   "truth_alt", "truth_len", 
-	   "query_alt", "query_len"
+	   "query_alt", "query_len", "genome_expected"
 	   )
 
-vtypes <- "ciiiccccccccccccici"
+vtypes <- "ciiiccccccccccccicil"
 
 read_vbench <- function(path) {
   read_tsv(

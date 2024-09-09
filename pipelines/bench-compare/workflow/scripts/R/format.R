@@ -53,6 +53,7 @@ readr::read_tsv(bed_path,
     end = pmin(realend + 50, chr_length)
   ) %>%
   select(-chr_length) %>%
-  relocate(chrom, start, end, realstart, realend) %>%
   filter(!(q100_len >= 50 | hprc_len >= 50)) %>%
+  mutate(id = row_number()) %>%
+  relocate(chrom, start, end, realstart, realend, id) %>%
   readr::write_tsv(snakemake@output[[1]], col_names = FALSE)

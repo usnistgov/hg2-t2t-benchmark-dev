@@ -458,22 +458,33 @@ rule vcf_to_bed:
         "scripts/python/vcf_to_bed.py"
 
 
-rule filter_fn_fp:
+rule add_expectation_vbench:
     input:
         rules.vcf_to_bed.output,
     output:
-        res_ref_dir / "small_vars_{mapped_hap}_fp_fn.bed.gz"
-    shell:
-        "gunzip -c {input} | grep -E '	(FP|FN)' | gzip -c > {output}"
+        res_ref_dir / "expected" / "small_vars_{mapped_hap}_expected.bed.gz"
+    conda:
+        "envs/r.yml"
+    script:
+        "scripts/R/add_expectation.R"
 
 
-rule filter_tp:
-    input:
-        rules.vcf_to_bed.output,
-    output:
-        res_ref_dir / "small_vars_{mapped_hap}_tp.bed.gz"
-    shell:
-        "gunzip -c {input} | grep -v -E '	(FP|FN)' | gzip -c > {output}"
+#rule filter_fn_fp:
+#    input:
+#        rules.vcf_to_bed.output,
+#    output:
+#        res_ref_dir / "small_vars_{mapped_hap}_fp_fn.bed.gz"
+#    shell:
+#        "gunzip -c {input} | grep -E '	(FP|FN)' | gzip -c > {output}"
+#
+#
+#rule filter_tp:
+#    input:
+#        rules.vcf_to_bed.output,
+#    output:
+#        res_ref_dir / "small_vars_{mapped_hap}_tp.bed.gz"
+#    shell:
+#        "gunzip -c {input} | grep -v -E '	(FP|FN)' | gzip -c > {output}"
 
 
 rule small_var_projected:
@@ -492,7 +503,8 @@ rule small_var_projected:
 
 rule get_vbench_overlaps:
     input:
-        vbench=rules.filter_fn_fp.output,
+        #vbench=rules.filter_fn_fp.output,
+        vbench=rules.add_expectation_vbench.output,
         gbench=rules.small_var_projected.output,
     output:
         final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "both_vbench.bed.gz",
@@ -506,7 +518,8 @@ rule get_vbench_overlaps:
 
 rule get_gbench_overlaps:
     input:
-        vbench=rules.filter_fn_fp.output,
+        #vbench=rules.filter_fn_fp.output,
+        vbench=rules.add_expectation_vbench.output,
         gbench=rules.small_var_projected.output,
     output:
         final_dir / "variant_bench_compare" / "hprc_{hap}_q100_{mapped_hap}" / "both_gbench.bed.gz",
@@ -551,8 +564,8 @@ rule all:
             rules.summarize_bench.output,
             ref=["GRCh38"],
         ),
-        expand(
-            rules.filter_tp.output,
-            ref=["GRCh38"],
-            mapped_hap=HAPLOTYPES,
-        ),
+        #expand(
+        #    rules.filter_tp.output,
+        #    ref=["GRCh38"],
+        #    mapped_hap=HAPLOTYPES,
+        #),
