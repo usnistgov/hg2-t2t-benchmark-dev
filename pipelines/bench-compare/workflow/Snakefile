@@ -495,9 +495,21 @@ rule small_var_projected:
         final_dir / "projected" / "hprc_{hap}_q100_{mapped_hap}_projected_smallvar.bed.gz",
     conda:
         "envs/minimap.yml"
+    # NOTE this can produce duplicates if the bed in 'a' intersects with more
+    # than one region in 'b' so use funny awk thing to remove these
+    #
+    # NOTE2 the funny sed thing is to flip the order of columns 2-3 with 4-5 (and back)
+    # columns 2-3 have the slopped coordinates and 4-5 have the original coordinates,
+    # which we want to use when intersecting. The sed command is also delightfully
+    # absurd to look at :)
     shell:
         """
-        intersectBed -a {input.bed} -b {input.regions} -wa | gzip -c > {output}
+        gunzip -c {input.bed} | \
+        sed 's/^\([^\t]\+\)\t\([^\t]\+\)\t\([^\t]\+\)\t\([^\t]\+\)\t\([^\t]\+\)\t\(.*\)/\\1\t\\4\t\\5\t\\2\t\\3\t\\6/' | \
+        intersectBed -a stdin -b {input.regions} -wa | \
+        awk '!a[$0]++' | \
+        sed 's/^\([^\t]\+\)\t\([^\t]\+\)\t\([^\t]\+\)\t\([^\t]\+\)\t\([^\t]\+\)\t\(.*\)/\\1\t\\4\t\\5\t\\2\t\\3\t\\6/' | \
+        gzip -c > {output}
         """
 
 
