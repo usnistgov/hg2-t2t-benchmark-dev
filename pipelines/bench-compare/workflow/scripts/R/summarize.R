@@ -11,12 +11,12 @@ split_path <- function(df, path) {
 }
 
 gcols <- c("gchrom", "gstart", "gend", "realstart", "realend", "gid",
-	   "overlap", "variant", 
-           "strand", "error_type", "gtype", "original",
-	   "q100", "hprc", "q100_len", "hprc_len", "seq"
+	   "overlap", "error_type", "q100", "hprc", "original",
+	   "trim_left", "trim_right", "error_group", "error_group_size", 
+	   "q100_len", "hprc_len", "seq"
 	   )
 
-gtypes = "ciiiiidccccccciic"
+gtypes = "ciiiiidcccciiiic"
 
 vcols <- c("vchrom", "vstart", "vend", "vid", "ref", "alt", "regions", 
 	   "truth_blt", "truth_bd", "truth_gt", "truth_bk",

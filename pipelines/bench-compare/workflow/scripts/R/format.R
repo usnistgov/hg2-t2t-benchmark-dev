@@ -30,30 +30,26 @@ readr::read_tsv(bed_path,
   separate_longer_delim(data, "~") %>%
   separate_wider_delim(data,
                        delim = ";",
-                       names = c("name", "score", "strand", "thickStart",
-                                 "thickEnd", "itemRgb", "consensus", "variant",
-                                 "altName")
+                       names = c("error_type", "q100", "hprc", "src",
+                                 "trim_left", "trim_right", "gid", "error_group", "error_group_size")
                        ) %>%
   arrange(chromidx, chrom, start, end) %>%
-  select(-chromidx, -score, -thickStart, -thickEnd, -itemRgb) %>%
+  select(-chromidx) %>%
   left_join(genome, by = "chrom") %>%
   mutate(
-    q100 = str_extract(name, "chr[0-9XY]+_[PM]ATERNAL_[0-9]+_([ACGT\\*]+)_[ACGT\\*]+", 1),
-    hprc = str_extract(name, "chr[0-9XY]+_[PM]ATERNAL_[0-9]+_[ACGT\\*]+_([ACGT\\*]+)", 1),
     # variants with "*" are "between bases" and thus have zero length
     q100_len = if_else(q100 == "*", 0, str_length(q100)),
     hprc_len = if_else(hprc == "*", 0, str_length(hprc)),
-    # TODO see the original error bed, it looks like we need to actually add 1 to start and not end
     realstart = start,
-    # for "*" variants on the q100 asm, shift end by 1, which usually will make it equal to
-    # start unless the liftover did something weird
-    realend = if_else(q100 == "*", pmax(end - 1, start), end),
-    # some variants are near the beginning of a chromosome
+    # fix the end for zero-length variants, had one base added to the end to
+    # make the projection work
+    realend = if_else(q100 == "*", pmax(start, end - 1), end),
+    # add "slop"; some variants are near the beginning of a chromosome
     start = pmax(realstart - 50, 0),
     end = pmin(realend + 50, chr_length)
   ) %>%
   select(-chr_length) %>%
+  # remove "SVs"
   filter(!(q100_len >= 50 | hprc_len >= 50)) %>%
-  mutate(id = row_number()) %>%
-  relocate(chrom, start, end, realstart, realend, id) %>%
+  relocate(chrom, start, end, realstart, realend, gid) %>%
   readr::write_tsv(snakemake@output[[1]], col_names = FALSE)

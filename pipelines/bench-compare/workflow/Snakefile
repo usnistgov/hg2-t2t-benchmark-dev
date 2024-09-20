@@ -259,21 +259,41 @@ rule run_minimap:
 # run liftover
 
 
-rule slop_errors:
+rule fix_errors:
     input:
         rules.download_errors.output,
     output:
-        res_asm_dir / "errors_slop50.bed",
-    shell:
-        """
-        awk '{FS=OFS=\"\t\"} {print $1,$2-50,$3+50,$10,$11,$12}' {input} \
-        > {output}
-        """
+        res_asm_dir / "errors_fixed.bed",
+    script:
+        "scripts/python/fix_errors.py"
+
+
+rule group_errors:
+    input:
+        rules.fix_errors.output,
+    output:
+        res_asm_dir / "errors_grouped.bed",
+    conda:
+        "envs/r.yml"
+    script:
+        "scripts/R/group_errors.R"
+
+
+#rule slop_errors:
+#    input:
+#        rules.download_errors.output,
+#    output:
+#        res_asm_dir / "errors_slop50.bed",
+#    shell:
+#        """
+#        awk '{FS=OFS=\"\t\"} {print $1,$2-50,$3+50,$10,$11,$12}' {input} \
+#        > {output}
+#        """
 
 
 rule split_errors:
     input:
-        bed=rules.download_errors.output,
+        bed=rules.group_errors.output,
         genome=lambda w: expand(rules.make_asm_genome.output, hap = w.mapped_hap),
     output:
         res_asm_dir / "errors_slop50_{mapped_hap}.bed",
@@ -281,6 +301,13 @@ rule split_errors:
         chr_filter=lambda w: "PATERNAL" if w.mapped_hap == "pat" else "MATERNAL",
     conda:
         "envs/minimap.yml"
+    # 1. filter errors to the hap we want
+    # 2. join all columns after 3 using ";" so that we only have 4 columns
+    #    total (required for projection script)
+    # 3. sort bed
+    # 4. merge any overlapping regions and join column 4 with "~"; this is
+    #    because the projection script will get very angry if there are
+    #    overlapping regions, and we will split the "~" columns after.
     shell:
         """
         grep {params.chr_filter} {input.bed} | \
@@ -495,10 +522,7 @@ rule small_var_projected:
         final_dir / "projected" / "hprc_{hap}_q100_{mapped_hap}_projected_smallvar.bed.gz",
     conda:
         "envs/minimap.yml"
-    # NOTE this can produce duplicates if the bed in 'a' intersects with more
-    # than one region in 'b' so use funny awk thing to remove these
-    #
-    # NOTE2 the funny sed thing is to flip the order of columns 2-3 with 4-5 (and back)
+    # NOTE the funny sed thing is to flip the order of columns 2-3 with 4-5 (and back)
     # columns 2-3 have the slopped coordinates and 4-5 have the original coordinates,
     # which we want to use when intersecting. The sed command is also delightfully
     # absurd to look at :)
@@ -506,11 +530,27 @@ rule small_var_projected:
         """
         gunzip -c {input.bed} | \
         sed 's/^\([^\t]\+\)\t\([^\t]\+\)\t\([^\t]\+\)\t\([^\t]\+\)\t\([^\t]\+\)\t\(.*\)/\\1\t\\4\t\\5\t\\2\t\\3\t\\6/' | \
-        intersectBed -a stdin -b {input.regions} -wa | \
-        awk '!a[$0]++' | \
+        intersectBed -a stdin -b {input.regions} -wa -u | \
         sed 's/^\([^\t]\+\)\t\([^\t]\+\)\t\([^\t]\+\)\t\([^\t]\+\)\t\([^\t]\+\)\t\(.*\)/\\1\t\\4\t\\5\t\\2\t\\3\t\\6/' | \
         gzip -c > {output}
         """
+
+
+rule get_projection_stats:
+    input:
+        projectable=rules.run_liftover.output.projectable,
+        src=rules.split_errors.output,
+        smallvar=rules.small_var_projected.output,
+    output:
+        counts_plot=final_dir / "projected" / "stats" / "hprc_{hap}_q100_{mapped_hap}_chrom_counts.pdf",
+        groups_plot=final_dir / "projected" / "stats" / "hprc_{hap}_q100_{mapped_hap}_chrom_groups.pdf",
+        groups_bed=final_dir / "projected" / "stats" / "hprc_{hap}_q100_{mapped_hap}_chrom_groups.bed.gz",
+        smallvar_plot=final_dir / "projected" / "stats" / "hprc_{hap}_q100_{mapped_hap}_smallvar_counts.pdf",
+        smallvar_overlaps_plot=final_dir / "projected" / "stats" / "hprc_{hap}_q100_{mapped_hap}_smallvar_overlaps.pdf",
+    conda:
+        "envs/r.yml"
+    script:
+        "scripts/R/projection_stats.R"
 
 
 rule get_vbench_overlaps:
@@ -576,8 +616,9 @@ rule all:
             rules.summarize_bench.output,
             ref=["GRCh38"],
         ),
-        #expand(
-        #    rules.filter_tp.output,
-        #    ref=["GRCh38"],
-        #    mapped_hap=HAPLOTYPES,
-        #),
+        expand(
+            rules.get_projection_stats.output,
+            ref=["GRCh38"],
+            hap=HAPLOTYPES,
+            mapped_hap=HAPLOTYPES,
+        ),
