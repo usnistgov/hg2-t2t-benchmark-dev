@@ -661,13 +661,24 @@ rule get_v_matches:
     conda:
         "envs/r.yml"
     script:
-        "scripts/R/match_v.R"
+        "scripts/R/get_v_matches.R"
+
+
+rule get_g_nohits:
+    input:
+        rules.summarize_bench.output.gbench
+    output:
+        final_dir / "variant_summary" / "gbench_nohits.bed",
+    conda:
+        "envs/r.yml"
+    script:
+        "scripts/R/get_g_nohits.R"
 
 
 rule all:
     input:
         expand(
-            rules.get_v_matches.output,
+            rules.get_v_matches.output + rules.get_g_nohits.output,
             ref=["GRCh38"],
         ),
         expand(
