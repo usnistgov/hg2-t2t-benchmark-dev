@@ -31,7 +31,7 @@ readr::read_tsv(bed_path,
   separate_wider_delim(data,
                        delim = ";",
                        names = c("error_type", "q100", "hprc", "src",
-                                 "trim_left", "trim_right", "gid", "error_group", "error_group_size")
+                                 "trim_left", "trim_right", "gid", "error_group", "error_group_size", "nocov")
                        ) %>%
   arrange(chromidx, chrom, start, end) %>%
   select(-chromidx) %>%

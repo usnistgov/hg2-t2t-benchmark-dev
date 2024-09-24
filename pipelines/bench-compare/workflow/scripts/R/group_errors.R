@@ -6,8 +6,14 @@ chrom_index <- function(s) {
   as.integer(str_replace(s, "chr", ""))
 }
 
+nocov_ids <- read_tsv(
+  snakemake@input[["nocov"]],
+  col_names = "gid",
+  col_types = "i"
+) %>% pull(gid)
+
 read_tsv(
-  snakemake@input[[1]],
+  snakemake@input[["bed"]],
   col_types = "ciicccciii",
   col_names = c("chrom", "start", "end", "error_type", "q100", "hprc", "src", "trim_left", "trim_right", "gid")
 ) %>%
@@ -21,4 +27,5 @@ read_tsv(
   ungroup() %>%
   mutate(chrom = sprintf("%s_%s", chrom, hap)) %>%
   select(-chromidx, -hap) %>%
+  mutate(nocov = gid %in% nocov_ids) %>%
   write_tsv(snakemake@output[[1]], col_names = F)

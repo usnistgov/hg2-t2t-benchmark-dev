@@ -12,7 +12,7 @@ split_path <- function(df, path) {
 
 gcols <- c("gchrom", "gstart", "gend", "realstart", "realend", "gid",
 	   "overlap", "error_type", "q100", "hprc", "original",
-	   "trim_left", "trim_right", "error_group", "error_group_size", 
+	   "trim_left", "trim_right", "error_group", "error_group_size", "nocov",
 	   "q100_len", "hprc_len", "seq"
 	   )
 

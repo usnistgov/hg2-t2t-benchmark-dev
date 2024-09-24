@@ -9,7 +9,7 @@ chrom_index <- function(s) {
 proc_df <- function(df) {
   df %>%
     separate_longer_delim(data, "~") %>%
-    separate(data, ";", into = c(NA, NA, NA, NA, NA, NA, "gid", "error_group", "error_group_size")) %>%
+    separate(data, ";", into = c(NA, NA, NA, NA, NA, NA, "gid", "error_group", "error_group_size", "nocov")) %>%
     mutate(gid = as.integer(gid)) %>%
     mutate(error_group_size = as.integer(error_group_size)) %>%
     mutate(chromidx = str_replace(chrom, "_[^_]+", "") %>% chrom_index()) %>%

@@ -38,6 +38,11 @@ ERRORS = {
     "mat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v1.1/benchmark/results/hprc_hg002_curated_vs_v1.1/benchmatv1.1/hg002_curated_mat.errortype.hg002v1.1.bed",
 }
 
+HPRC_BAM = {
+    "pat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v1.1/benchmark/results/hprc_hg002_curated_vs_v1.1/hg002_curated_pat_vs_diploid.sort.bam",
+    "mat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v1.1/benchmark/results/hprc_hg002_curated_vs_v1.1/hg002_curated_mat_vs_diploid.sort.bam",
+}
+
 wildcard_constraints:
     mapped_hap="(mat|pat)"
 
@@ -101,6 +106,15 @@ rule download_errors:
         src_dir / "errors" / "{hap}.bed",
     params:
         url=lambda w: ERRORS[w.hap],
+    shell:
+        "curl -SsLqf {params.url} > {output}"
+
+
+rule download_error_bam:
+    output:
+        src_dir / "errors" / "{hap}.bam",
+    params:
+        url=lambda w: HPRC_BAM[w.hap],
     shell:
         "curl -SsLqf {params.url} > {output}"
 
@@ -268,9 +282,34 @@ rule fix_errors:
         "scripts/python/fix_errors.py"
 
 
+rule get_error_coverage:
+    input:
+        bam=rules.download_error_bam.output,
+        bed=rules.fix_errors.output,
+    output:
+        res_asm_dir / "no_coverage.txt",
+    conda:
+        "envs/minimap.yml"
+    # Get a list of all errors that are completely within a region of no
+    # coverage. Low map alignments are not considered to "cover" asm.
+    # Only regions 100+bp long are considered.
+    # Return a list of "gid"s as newline separated list.
+    shell:
+        """
+        samtools view -h -q 5 {input.bam} | \
+        bedtools genomecov -ibam stdin -bga | \
+        grep '0$' | \
+        cut -f1-3 | \
+        awk 'OFS="\t" {{ if ($3-$2>99) {{ print $0 }} }}' | \
+        intersectBed -a {input.bed} -b stdin -f 1 -wa -u | \
+        cut -f10 > {output}
+        """
+
+
 rule group_errors:
     input:
-        rules.fix_errors.output,
+        bed=rules.fix_errors.output,
+        nocov=rules.get_error_coverage.output,
     output:
         res_asm_dir / "errors_grouped.bed",
     conda:
