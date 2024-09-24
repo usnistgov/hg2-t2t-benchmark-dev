@@ -649,10 +649,25 @@ rule summarize_bench:
         "scripts/R/summarize.R"
 
 
+rule get_v_matches:
+    input:
+        rules.summarize_bench.output.vbench
+    output:
+        nohit = final_dir / "variant_summary" / "vbench_nohits.tsv.gz",
+        nohit_bed = final_dir / "variant_summary" / "vbench_nohits.bed",
+        matched = final_dir / "variant_summary" / "vbench_matched_hits.tsv.gz",
+        unmatched = final_dir / "variant_summary" / "vbench_unmatched_hits.tsv.gz",
+        badlift = final_dir / "variant_summary" / "vbench_badlift.tsv.gz",
+    conda:
+        "envs/r.yml"
+    script:
+        "scripts/R/match_v.R"
+
+
 rule all:
     input:
         expand(
-            rules.summarize_bench.output,
+            rules.get_v_matches.output,
             ref=["GRCh38"],
         ),
         expand(
