@@ -73,10 +73,10 @@ df_v_badlift <- df_v_pre %>%
   filter(!(abs(liftover_diff) < 100 | is.na(gchrom)))
   
 df_v_badlift %>%
-  write_tsv(snakemake@input[["badlift"]])
+  write_tsv(snakemake@output[["badlift"]])
 
 df_v <- df_v_pre %>%
-  anti_join(df_v_badlift, by = c("hap", "vid")) %>%
+  anti_join(df_v_badlift, by = c("hap", "vid"))
  
 #
 # get single hits that are exact matches
@@ -382,7 +382,7 @@ df_v_matched <- bind_rows(
   arrange(vchrom, vstart, vend)
 
 df_v_matched %>%
-  write_tsv(snakemake@input[["matched"]])
+  write_tsv(snakemake@output[["matched"]])
 
 df_v_unmatched <- df_v %>%
   anti_join(df_v_matched, by = c("hap", "vid"))
@@ -391,7 +391,7 @@ df_v_unmatched <- df_v %>%
 df_v_unmatched %>%
   filter(ng > 0) %>%
   select(-alt) %>%
-  write_tsv(snakemake@input[["unmatched"]])
+  write_tsv(snakemake@output[["unmatched"]])
 
 # These are the things that should have a hit but don't (relatively few)
 df_v_unmatched_nohits <- df_v_unmatched %>%
@@ -404,11 +404,11 @@ df_v_unmatched_nohits <- df_v_unmatched %>%
   select(-liftover_diff, -genome_expected)
 
 df_v_unmatched_nohits %>%
-  write_tsv(snakemake@input[["nohit"]])
+  write_tsv(snakemake@output[["nohit"]])
 
 df_v_unmatched_nohits %>%
   mutate(vchrom = sprintf("chr%d", vchrom)) %>%
   mutate(name = sprintf("%s->%s", truth_alt, query_alt)) %>%
   relocate(vchrom, vstart, vend, name) %>%
   select(vchrom, vstart, vend, name, hap, vid) %>%
-  write_tsv(snakemake@input[["nohit_bed"]], col_names = F)
+  write_tsv(snakemake@output[["nohit_bed"]], col_names = F)
