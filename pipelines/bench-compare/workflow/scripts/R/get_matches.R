@@ -484,7 +484,43 @@ replay_multi <- function(df, key) {
     )
 }
 
-df_v_1toN_matched <- df_v_1toN_match_results %>%
+df_v_1toN_results <- df_v_1toN %>%
+  group_by(isec) %>%
+  mutate(
+    # Figure out how much to adjust the liftover region based on edit lengths:
+    # this is similar to what we do for single variants (see above) except that
+    # a) the sum of all edit length in truth and query should equal the edit
+    # length of the genome error (since there is only one) and b) the only
+    # variants that count toward this sum are variants that are not TP/TP that
+    # don't expect a genome hit
+    .is_real_tp = replace_na(truth_bd == "TP" & query_bd == "TP" & !genome_expected, FALSE),
+    .lift_len = realend - realstart,
+    .q100_ind_len = str_length(q100) - .lift_len,
+    .hprc_ind_len = str_length(hprc) - .lift_len,
+    .truth_diff = sum(if_else(.is_real_tp, 0, truth_indel_len)) - .q100_ind_len,
+    .query_diff = sum(if_else(.is_real_tp, 0, query_indel_len)) - .hprc_ind_len,
+    .adj_realstart = if_else(
+      .truth_diff == .query_diff & .truth_diff != 0,
+      realstart + .truth_diff,
+      realstart
+    )
+  ) %>%
+  ungroup() %>%
+  # precompute lots of other stuff
+  mutate(
+    .v0 = pmax(vstart - gstart + 1, 0),
+    .v1 = vend - gstart,
+    .q100_rpy = replay_variant(seq, .adj_realstart - gstart + 1, realend - gstart, q100),
+    .hprc_rpy = replay_variant(seq, .adj_realstart - gstart + 1, realend - gstart, hprc)
+  ) %>%
+  # ensure variant bench lines are in order
+  arrange(hap, gid, chrom, vstart, vend) %>%
+  group_by(gid, hap) %>%
+  group_map(replay_multi) %>%
+  bind_rows() %>%
+  select(-starts_with("."))
+
+df_v_1toN_matched <- df_v_1toN_results %>%
   group_by(isec) %>%
   mutate(
     .has_match = sum(vmatches) > 0,
