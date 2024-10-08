@@ -875,7 +875,7 @@ df_v_badlift %>%
   write_tsv(snakemake@output[["badlift"]])
 
 df_v_unfixable_overlaps %>%
-  write_tsv(snakemake@output[["unfixable_overlaps"]])
+  write_tsv(snakemake@output[["unfixable_overlap"]])
 
 df_v_g_duplicated %>%
   write_tsv(snakemake@output[["duplicated"]])
