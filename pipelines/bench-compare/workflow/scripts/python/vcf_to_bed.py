@@ -70,13 +70,13 @@ def trim_ref(start, ref, truth, query):
 
 
 with gzip.open(ip, "rt") as i, gzip.open(op, "wt") as o:
-    id = 0
+    #id = 0
     for line in i:
         if line.startswith("#"):
             pass
         else:
         #elif ":FP:" in line or ":FN:" in line:
-            id = id + 1
+            #id = id + 1
 
             s = line.rstrip().split("\t")
 
@@ -120,8 +120,6 @@ with gzip.open(ip, "rt") as i, gzip.open(op, "wt") as o:
                 chrom,
                 start_,
                 end_,
-
-                str(id),
 
                 ref_,
                 alt,

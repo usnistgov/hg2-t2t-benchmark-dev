@@ -1,13 +1,19 @@
 library(tidyverse)
 
-vcols <- c("vchrom", "vstart", "vend", "id", "ref", "alt", "regions",
+chrom_index <- function(s) {
+  s[s == "chrX"] <- "chr23"
+  s[s == "chrY"] <- "chr24"
+  as.integer(str_replace(s, "chr", ""))
+}
+
+vcols <- c("vchrom", "vstart", "vend", "ref", "alt", "regions",
            "truth_blt", "truth_bd", "truth_gt", "truth_bk",
            "query_blt", "query_bd", "query_gt", "query_bk",
            "truth_alt", "truth_len",
            "query_alt", "query_len"
            )
 
-vtypes <- "ciiiccccccccccccici"
+vtypes <- "ciiccccccccccccici"
 
 read_vbench <- function(path) {
   read_tsv(
@@ -15,7 +21,12 @@ read_vbench <- function(path) {
     col_types = vtypes,
     col_names = vcols,
     na = ".",
-  )
+  ) %>%
+  mutate(chrom_idx = chrom_index(vchrom)) %>%
+  arrange(chrom_idx, vstart, vend) %>%
+  mutate(id = row_number()) %>%
+  relocate(vchrom, vstart, vend, id) %>%
+  select(-chrom_idx)
 }
 
 df <- read_vbench(snakemake@input[[1]])
