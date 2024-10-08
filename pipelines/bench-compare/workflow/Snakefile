@@ -649,36 +649,27 @@ rule summarize_bench:
         "scripts/R/summarize.R"
 
 
-rule get_v_matches:
+rule get_matches:
     input:
-        rules.summarize_bench.output.vbench
+        vbench=rules.summarize_bench.output.vbench,
+        gbench=rules.summarize_bench.output.gbench,
     output:
-        nohit = final_dir / "variant_summary" / "vbench_nohits.tsv.gz",
-        nohit_bed = final_dir / "variant_summary" / "vbench_nohits.bed",
-        matched = final_dir / "variant_summary" / "vbench_matched_hits.tsv.gz",
-        unmatched = final_dir / "variant_summary" / "vbench_unmatched_hits.tsv.gz",
+        hits = final_dir / "variant_summary" / "hits.tsv.gz",
+        v_nohit = final_dir / "variant_summary" / "vbench_nohits.tsv.gz",
+        g_nohit = final_dir / "variant_summary" / "gbench_nohits.tsv.gz",
         badlift = final_dir / "variant_summary" / "vbench_badlift.tsv.gz",
+        duplicated = final_dir / "variant_summary" / "vbench_duplicated.tsv.gz",
+        unfixable_overlap = final_dir / "variant_summary" / "unfixable_overlap.tsv.gz",
     conda:
         "envs/r.yml"
     script:
-        "scripts/R/get_v_matches.R"
-
-
-rule get_g_nohits:
-    input:
-        rules.summarize_bench.output.gbench
-    output:
-        final_dir / "variant_summary" / "gbench_nohits.bed",
-    conda:
-        "envs/r.yml"
-    script:
-        "scripts/R/get_g_nohits.R"
+        "scripts/R/get_matches.R"
 
 
 rule all:
     input:
         expand(
-            rules.get_v_matches.output + rules.get_g_nohits.output,
+            rules.get_matches.output,
             ref=["GRCh38"],
         ),
         expand(
