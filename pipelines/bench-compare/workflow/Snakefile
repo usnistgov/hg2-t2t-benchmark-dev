@@ -27,8 +27,8 @@ REF = {
 
 BENCH = {
     "GRCh38": {
-        "vcf": "https://giab-data.s3.amazonaws.com/defrabb_runs/20241009_v0.018_HG002Q100v1.1/results/evaluations/happy/GRCh38_HG002_T~T2TQ100v1.1_Q~HPRCcur.20211005-DB-gtfix_TR~dipbed_GRCh38_HG002-T2TQ100v1.1-dipz2k_smvar-excluded/GRCh38_HG2-HPRCcur.20211005-DB-gtfix_HG2-T2TQ100-V1.1_smvar_dipcall-z2k.vcf.gz"
-        "bed": "https://giab-data.s3.amazonaws.com/defrabb_runs/20241009_v0.018_HG002Q100v1.1/results/draft_benchmarksets/GRCh38_HG002-T2TQ100v1.1-dipz2k_smvar-excluded/GRCh38_HG2-T2TQ100-V1.1_smvar_dipcall-z2k.benchmark.bed"
+        "vcf": "https://giab-data.s3.amazonaws.com/defrabb_runs/20241009_v0.018_HG002Q100v1.1/results/evaluations/happy/GRCh38_HG002_T~T2TQ100v1.1_Q~HPRCcur.20211005-DB-gtfix_TR~dipbed_GRCh38_HG002-T2TQ100v1.1-dipz2k_smvar-excluded/GRCh38_HG2-HPRCcur.20211005-DB-gtfix_HG2-T2TQ100-V1.1_smvar_dipcall-z2k.vcf.gz",
+        "bed": "https://giab-data.s3.amazonaws.com/defrabb_runs/20241009_v0.018_HG002Q100v1.1/results/draft_benchmarksets/GRCh38_HG002-T2TQ100v1.1-dipz2k_smvar-excluded/GRCh38_HG2-T2TQ100-V1.1_smvar_dipcall-z2k.benchmark.bed",
         "query_vcf": "https://giab-data.s3.amazonaws.com/giab-test-data/benchmarksets/HG002/draft-benchmarks/20220610_v0.008_HG002-HPRC-GRCh38/GRCh38_HG2-HPRC-20211005_dipcall-z2k_gtfix.vcf.gz",
     },
 }
