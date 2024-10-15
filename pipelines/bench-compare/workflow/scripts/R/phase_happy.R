@@ -296,6 +296,11 @@ match_found <- function(missing) {
   )
 }
 
+trimmed_eq <- function(ref, alt, k0, k1, ref_len, alt_len) {
+  substr(ref, 1, k0) == substr(alt, 1, k0) &&
+    substr(ref, ref_len - k1, ref_len) == substr(alt, alt_len - k1, alt_len)
+}
+
 # Loop through the available extra alleles and attempt to match them with a
 # variant that needs an allele to phase it. This is done per-group. First try
 # to use "exact matching" which will only work if the position/ref/alt fields
@@ -319,17 +324,46 @@ fix_missing_alleles <- function(tophase, extra) {
           this_alt <- x@alt
           break
         } else {
-          # else try to shave off parts of the ref/alt depending on starting
-          # position and ref length
-          pos_diff <- p@start - x@start
-          if (pos_diff > 0) {
-            ref_diff <- (nchar(x@ref) - pos_diff) - nchar(p@ref)
-            .ref <- str_sub(x@ref, 1 + pos_diff, -1 - ref_diff)
-            .alt <- str_sub(x@alt, 1 + pos_diff, -1 - ref_diff)
-            if (.ref == p@ref && .alt %in% p@alts) {
-              this_alt <- .alt
-              match_idx <- i
-              break
+          # else attempt to trim the alleles such that the reference fields
+          # overlap perfectly
+          pref_len <- nchar(p@ref)
+          palt_len <- nchar(p@alt)
+          xref_len <- nchar(x@ref)
+          xalt_lens <- nchar(x@alt)
+          start_diff <- p@start - x@start
+          end_diff <- (pref_len + p@start) - (xref_len + x@start)
+          x0 <- max(start_diff, 0)
+          x1 <- max(-end_diff, 0)
+          p0 <- max(-start_diff, 0)
+          p1 <- max(end_diff, 0)
+          # First, trim the ref fields of tophase and extra allele and test if
+          # they match. This should pretty much always pass since the ref field
+          # should simply be a substring of the reference haplotype (duh) and if
+          # it isn't the vcf got screwed up.
+          xref <- substr(x@ref, 1 + x0, xref_len - x1)
+          pref <- substr(p@ref, 1 + p0, pref_len - p1)
+          if (xref == pref) {
+            # Second, trim the extra alt allele and the tophase alt allele(s);
+            # test if one of the latter alts matches the former
+            xalt <- substr(x@alt, 1 + x0, xalt_len - x1)
+            palts <- substr(p@alts, 1 + p0, palt_lens - p1)
+            alt_i <- which(palts == xalt)[1]
+            if (!is.na(alt_i)) {
+              # Third, make sure that all the parts we removed match each other
+              # b/t the ref and alt of each allele. If this isn't true then the
+              # trim did not result in a simpler/equivalent variant. For this,
+              # only consider the tophase alt that matched above. The ref trim
+              # segments should always match unless something catastrophic
+              # happens (as noted above).
+              palt <- palts[[alt_i]]
+              palt_len <- nchar(palt)
+              xtrim <- trimmed_eq(x@ref, x@alt, x0, x1, xref_len, xalt_len)
+              ptrim <- trimmed_eq(p@ref, palt, p0, p1, pref_len, palt_len)
+              if (xtrim && ptrim) {
+                this_alt <- .alt
+                match_idx <- i
+                break
+              }
             }
           }
         }
