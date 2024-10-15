@@ -8,7 +8,10 @@ ensure <- function(test, msg) {
 }
 
 ensure_empty <- function(df, msg) {
-  ensure(nrow(df) == 0, msg)
+  if (nrow(df) > 0) {
+    print(df)
+    stop(sprintf("ERROR %s", msg))
+  }
 }
 
 read_data <- function(happy_path, merged_path) {
@@ -55,14 +58,28 @@ read_data <- function(happy_path, merged_path) {
       select(chrom_happy, start_happy, id, ref_happy, alt_happy, truth_happy, query_happy) %>%
       arrange(chrom_happy, start_happy, truth_happy)
   ) %>%
-    # repair truth field, for some reason bcftools merge will turn 0|. into 0/.
+    # repair truth field, for some reason bcftools merge will turn 0|. into 0/. and 1|. into 1/. (etc)
     mutate(
       truth = if_else(
-        str_detect(truth, "^0/\\.") & str_detect(truth_happy, "^0|\\."),
-        str_replace(truth, "^0/\\.", "0|."),
+        str_detect(truth, "^[0-9]/\\.") & str_detect(truth_happy, "^[0-9]|\\."),
+        str_replace(truth, "/", "|"),
         truth
-      )
+      ),
+      truth_gt = str_replace(truth, ":.*", ""),
+      query_gt = str_replace(query, ":.*", ""),
+      truth_happy_gt = str_replace(truth_happy, ":.*", ""),
+      query_happy_gt = str_replace(query_happy, ":.*", "")
     )
+
+  # Test: ensure bcftools merge did not screw with the GT fields, if it
+  # did we are totally doomed since this script relies on this assumption
+  filter(df, truth_gt != truth_happy_gt) %>%
+    relocate(truth_gt, truth_happy_gt) %>%
+    ensure_empty("bcftools screwed up the truth GT field :(")
+
+  filter(df, query_gt != query_happy_gt) %>%
+    relocate(query_gt, query_happy_gt) %>%
+    ensure_empty("bcftools screwed up the query GT field :(")
 
   # Test: all coords should be the same and all truth/query fields should be the same
   df %>%
@@ -76,10 +93,8 @@ read_data <- function(happy_path, merged_path) {
 
   # Parse out all the genotype fields
   df_gt <- df %>%
-    select(-chrom_happy, -start_happy, -truth_happy, -query_happy) %>%
+    select(-chrom_happy, -start_happy, -truth_happy, -query_happy, -truth_happy_gt, -query_happy_gt) %>%
     mutate(
-      truth_gt = str_replace(truth, ":.*", ""),
-      query_gt = str_replace(query, ":.*", ""),
       dipcall_gt = str_replace(dipcall, ":.*", ""),
       # ASSUME that the only unphased GT in truth are homs so mat/pat make sense
       tpat = as.integer(str_extract(truth_gt, "([0-9])(\\/|\\|)([0-9])", 1)),
@@ -535,8 +550,9 @@ fix_groups <- function(df) {
 
   # Some pairs of mismatched dipcall and query GTs are actually homs which are
   # very simple to fix by simply removing the alt refered to by the dipcall
-  # GT assuming it isn't refered to by the truth. This obviously assumes the
-  # het being removed is in the other variant of the pair (which we check)
+  # GT assuming it isn't refered to by the truth. The alt being removed does 
+  # not necessarily need to be in the other variant in the pair (although it
+  # will be if the two variants in the pair are in the same position).
   df_hom_pairs <- df_grouped %>%
     filter(.groupsize == 2) %>%
     filter(query_gt == "1/1" | dipcall_gt %in% c("1|1", "2|2")) %>%
@@ -552,21 +568,21 @@ fix_groups <- function(df) {
       # sanity check, this isn't needed to compute the final alt but if all the
       # assumptions going into this hold, then the shifted dipcall alt should
       # be the same as the existing query alt
-      .dip_alt_shift = lag(.dip_alt),
-      .query_alt = pmap_chr(list(ref, .alts, q1), pick_alt),
+      #.dip_alt_shift = lead(.dip_alt),
+      #.query_alt = pmap_chr(list(ref, .alts, q1), pick_alt),
       alt = if_else(is.na(dpat), alt, .alt),
       query_gt = if_else(query_gt == ".", ".", "1|1")
-    ) 
+    )
 
   # test the above assumption
-  df_hom_pairs %>%
-    filter(
-      !(
-        (.dip_alt_shift == .query_alt | (is.na(.dip_alt_shift) & is.na(.query_alt))) &
-          (ref == ref_happy)
-      )
-    ) %>%
-    ensure_empty("unpaired hom variant detected")
+  #df_hom_pairs %>%
+  #  filter(
+  #    !(
+  #      (.dip_alt_shift == .query_alt | (is.na(.dip_alt_shift) & is.na(.query_alt))) &
+  #        (ref == ref_happy)
+  #    )
+  #  ) %>%
+  #  ensure_empty("unpaired hom variant detected")
 
   # Anything with groupsize 1 that has a hom happy GT and a null dipcall GT is
   # assumed to have a corresponding dipcall variant that was "missed" in the
