@@ -297,8 +297,8 @@ match_found <- function(missing) {
 }
 
 trimmed_eq <- function(ref, alt, k0, k1, ref_len, alt_len) {
-  substr(ref, 1, k0) == substr(alt, 1, k0) &&
-    substr(ref, ref_len - k1, ref_len) == substr(alt, alt_len - k1, alt_len)
+  (substr(ref, 1, k0) == substr(alt, 1, k0)) &&
+    (substr(ref, ref_len - k1 + 1, ref_len) == substr(alt, alt_len - k1 + 1, alt_len))
 }
 
 # Loop through the available extra alleles and attempt to match them with a
@@ -327,9 +327,9 @@ fix_missing_alleles <- function(tophase, extra) {
           # else attempt to trim the alleles such that the reference fields
           # overlap perfectly
           pref_len <- nchar(p@ref)
-          palt_len <- nchar(p@alt)
+          palt_lens <- nchar(p@alts)
           xref_len <- nchar(x@ref)
-          xalt_lens <- nchar(x@alt)
+          xalt_len <- nchar(x@alt)
           start_diff <- p@start - x@start
           end_diff <- (pref_len + p@start) - (xref_len + x@start)
           x0 <- max(start_diff, 0)
@@ -360,10 +360,10 @@ fix_missing_alleles <- function(tophase, extra) {
               xtrim <- trimmed_eq(x@ref, x@alt, x0, x1, xref_len, xalt_len)
               ptrim <- trimmed_eq(p@ref, palt, p0, p1, pref_len, palt_len)
               if (xtrim && ptrim) {
-                this_alt <- .alt
+                this_alt <- xalt
                 match_idx <- i
                 break
-              }
+              } 
             }
           }
         }
@@ -526,21 +526,30 @@ fix_balanced_groups <- function(df) {
     bind_rows() %>%
     mutate(.success = .pat_balanced & .mat_balanced & .all_matched & .all_phased)
 
+  df_actually_fixed <- df_fixed %>%
+    filter(.success)
+
+  df_unsolved <- df_fixed %>%
+    filter(!.success)
+
   # Test that we did our job correctly
-  df_fixed %>%
-    filter(!.success) %>%
-    ensure_empty("Some variant groups could not be solved")
-  df_fixed %>%
+  #df_fixed %>%
+  #  filter(!.success) %>%
+  #  ensure_empty("Some variant groups could not be solved")
+  df_actually_fixed %>%
     filter(!(.ref == ref_happy & .alt == alt_happy)) %>%
     ensure_empty("Some variant groups do not have matching ref and alt")
 
-  df_fixed %>%
-    mutate(
-      ref = .ref,
-      alt = .alt,
-      query_gt = .query_gt
-    ) %>%
-    select(-starts_with("."))
+  list(
+    solved = df_actually_fixed %>%
+      mutate(
+        ref = .ref,
+        alt = .alt,
+        query_gt = .query_gt
+      ) %>%
+      select(-starts_with(".")),
+    unsolved = df_unsolved
+  )
 }
 
 # Fix the remaining alleles, which are assumed to be in "groups" that need to
@@ -641,11 +650,11 @@ fix_groups <- function(df) {
 
   list(
     fixed = bind_rows(
-      df_balanced,
+      df_balanced$solved,
       df_mono_hom,
       df_hom_pairs
     ),
-    unfixable = df_unfixable
+    unfixable = bind_rows(df_unfixable, df_balanced$unsolved)
   )
 }
 

@@ -83,6 +83,7 @@ with gzip.open(ip, "rt") as i, gzip.open(op, "wt") as o:
             # coordinates and other easy stuff
             chrom = s[0]
             start = int(s[1]) - 1
+            vid = s[2]
             ref = s[3]
             alt = s[4]
             info = next((y[1] for x in s[7].split(";") if (y := x.split("="))[0] == "Regions"), ".")
@@ -120,6 +121,8 @@ with gzip.open(ip, "rt") as i, gzip.open(op, "wt") as o:
                 chrom,
                 start_,
                 end_,
+
+                vid,
 
                 ref_,
                 alt,

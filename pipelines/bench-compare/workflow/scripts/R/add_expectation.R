@@ -6,14 +6,14 @@ chrom_index <- function(s) {
   as.integer(str_replace(s, "chr", ""))
 }
 
-vcols <- c("vchrom", "vstart", "vend", "ref", "alt", "regions",
+vcols <- c("vchrom", "vstart", "vend", "vid", "ref", "alt", "regions",
            "truth_blt", "truth_bd", "truth_gt", "truth_bk",
            "query_blt", "query_bd", "query_gt", "query_bk",
            "truth_alt", "truth_len",
            "query_alt", "query_len"
            )
 
-vtypes <- "ciiccccccccccccici"
+vtypes <- "ciiiccccccccccccici"
 
 read_vbench <- function(path) {
   read_tsv(
@@ -24,8 +24,7 @@ read_vbench <- function(path) {
   ) %>%
   mutate(chrom_idx = chrom_index(vchrom)) %>%
   arrange(chrom_idx, vstart, vend) %>%
-  mutate(id = row_number()) %>%
-  relocate(vchrom, vstart, vend, id) %>%
+  relocate(vchrom, vstart, vend, vid) %>%
   select(-chrom_idx)
 }
 
@@ -37,7 +36,7 @@ df_same <- df %>%
   filter(truth_alt == query_alt)
 
 df_notsame <- df %>%
-  anti_join(df_same, by = "id")
+  anti_join(df_same, by = "vid")
 
 # Next find positions where a variant is split between two lines with the same
 # ref, which often happens when truth is het and query is homalt (or reverse).
@@ -54,7 +53,7 @@ df_same2x <- df_notsame %>%
   ungroup()
 
 df_notsame2x <- df_notsame %>%
-  anti_join(df_same2x, by = "id")
+  anti_join(df_same2x, by = "vid")
 
 # Next remove "half TP" variants, which have a TP in truth/query and nocall in
 # the other. Assume that these are generally pairs of variants that are on
@@ -73,10 +72,10 @@ df_same_split_tp <- df_notsame2x %>%
 # this should include variants marked TP for both truth/query with mismatched
 # phase.
 expected_ids <- df_notsame2x %>%
-  anti_join(df_same_split_tp, by = "id") %>%
-  pull(id)
+  anti_join(df_same_split_tp, by = "vid") %>%
+  pull(vid)
 
 df %>%
-  mutate(genome_expected = id %in% expected_ids) %>%
+  mutate(genome_expected = vid %in% expected_ids) %>%
   write_tsv(snakemake@output[[1]], col_names = FALSE)
 
