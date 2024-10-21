@@ -827,6 +827,7 @@ df_v_NtoN_matched <- df_v_NtoN_results %>%
 # all match/unmatch results
 df_v_all_matched <- bind_rows(
   df_v_1to1_matched,
+  df_v_many_matched,
   df_v_1toN_matched,
   df_v_NtoN_matched
 ) %>%
