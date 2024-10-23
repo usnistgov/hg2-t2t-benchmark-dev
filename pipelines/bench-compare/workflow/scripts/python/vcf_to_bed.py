@@ -22,14 +22,12 @@ def lookup_alt(fmt, sample, alts):
     """Return the alt for a given sample column and desired haplotype."""
     alt = "."
     gt = lookup_maybe(fmt, sample, "GT")
-    # treat halfcalls as null
-    if not (gt == "0|." or gt == ".|0"):
-        # ASSUME anything unphased is a hom (in which case it doesn't matter)
-        m = re.match("([0-9])[/|]([0-9])", gt)
-        if m is not None:
-            i = int(m[1 if is_pat else 2])
-            if i > 0:
-                alt = alts[i-1]
+    # ASSUME anything unphased is a hom (in which case it doesn't matter)
+    if (m := re.match("([0-9.])[/|]([0-9.])", gt)) is not None:
+        # treat these as ref
+        if (i := m[1 if is_pat else 2]) != ".":
+            if (j := int(i)) > 0:
+                alt = alts[j-1]
     return (gt, alt)
 
 
