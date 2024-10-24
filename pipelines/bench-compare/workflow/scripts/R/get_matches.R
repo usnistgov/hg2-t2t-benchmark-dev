@@ -424,11 +424,13 @@ df_v_many_matched <- df_v_many_actions %>%
   anti_join(df_v_many_v_nohit, by = "isec") %>%
   anti_join(df_v_many_g_nohit, by = "isec") %>%
   filter(action != "kill") %>%
+  group_by(isec) %>%
   mutate(
-    match_group = if_else(action == "single", 1, NA),
+    match_group = if_else(action == "single", row_number(), NA),
     match_ng = if_else(action == "single", 1, NA),
     match_nv = if_else(action == "single", 1, NA)
-  )
+  ) %>%
+  ungroup()
 
 #
 # get multiple variant hits (one g to many v)
