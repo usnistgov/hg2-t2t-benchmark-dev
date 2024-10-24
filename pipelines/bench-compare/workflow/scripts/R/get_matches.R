@@ -671,6 +671,17 @@ df_v_galleles <- df_v_NtoN_worthit %>%
     .groups = "drop"
   )
 
+# Given a logical matrix, return a list of groups, where each group has all the
+# column indices in the matrix that are equal and also contain of a
+# representative column for later use.
+#
+# The intention of this is to determine which matches are independent of each
+# other (ie "match groups" of which there may be multiple in a given
+# intersection group). The runs of the matrix are runs, and the indices are
+# variants/errors that could possibly match. TRUE indicates that the given
+# variant/error in the given run is a match. We can assume that any matches that
+# are "grouped together" will (not) appear together in the runs, so equating the
+# columns should determine which variants/errors match together.
 group_columns <- function(m, indices_only) {
   c <- ncol(m)
   skip <- rep(FALSE, c)
@@ -690,6 +701,15 @@ group_columns <- function(m, indices_only) {
   acc
 }
 
+# Given a boolean matrix, group columns if one is a subset of another (that is,
+# if colA & colB == colA or colB). For all these groups, rewrite them to be the
+# most restricted subset (that is, with the fewest TRUEs), and then return the
+# grouping as indices in the matrix for each group.
+#
+# The intention of this is to find "dependent" matches. A match depends on
+# another if it requires the other match to replay correctly. The child match is
+# thus smaller and will appear in more runs, and will also appear in all the
+# runs of the parent match (hence this merging algorithm using subsets)
 merge_columns <- function(m) {
   c <- ncol(m)
   acc <- replicate(c, NULL, simplify = FALSE)
