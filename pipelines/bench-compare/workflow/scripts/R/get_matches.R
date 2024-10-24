@@ -563,7 +563,7 @@ df_v_NtoN <- df_v_many_combi %>%
   mutate(.missing_one_g = sum(rowmatch) == isec_ng - 1) %>%
   group_by(gid) %>%
   mutate(
-    .adj_this_g = if_else(.missing_one_g, sum(rowmatch) == 1, FALSE),
+    .adj_this_g = if_else(.missing_one_g, sum(rowmatch) == 0, FALSE),
     .is_real_tp = replace_na(truth_bd == "TP" & query_bd == "TP" & !genome_expected, FALSE),
     .lift_len = realend - realstart,
     .q100_ind_len = str_length(q100) - .lift_len,
