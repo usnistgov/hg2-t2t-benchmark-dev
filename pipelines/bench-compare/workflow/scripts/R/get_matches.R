@@ -718,10 +718,14 @@ merge_columns <- function(m) {
       for (j in (i+1):c) {
         s0 <- m[, i]
         s1 <- m[, j]
-        s01 <- s0 & s1
-        if (all(s01 == s0) || all(s01 == s1)) {
-          acc[[i]] <- rbind(acc[[i]], s01)
-          acc[[j]] <- rbind(acc[[j]], s01)
+        # Don't consider combinations that are entirely false, since these by
+        # definition can't have a dependent match
+        if (any(s0) && any(s1)) {
+          s01 <- s0 & s1
+          if (all(s01 == s0) || all(s01 == s1)) {
+            acc[[i]] <- rbind(acc[[i]], s01)
+            acc[[j]] <- rbind(acc[[j]], s01)
+          }
         }
       }
     }
@@ -795,7 +799,9 @@ replay_multi_poly <- function(i, v, g, seq) {
   if (!is.null(vres)) {
     vids <- map(v, ~ .x@id)
     gids <- map(g, ~ .x@id)
-    matches <- group_columns(cbind(vres, gres), FALSE)
+    matches <- group_columns(cbind(vres, gres), FALSE) %>%
+      # remove the one group which is all FALSE (ie never matched) if present
+      discard(~ !any(.x$runs))
     match_indices <- map(matches, ~ .x$indices)
     matches %>%
       map(~ .x$runs) %>%
