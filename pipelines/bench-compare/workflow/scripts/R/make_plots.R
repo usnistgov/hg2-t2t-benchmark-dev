@@ -693,14 +693,14 @@ df_vcf_rid_anno_short %>%
   geom_bar() +
   facet_wrap(c("group_name")) +
   labs(x = NULL, y = NULL, fill = "Error Type")
-ggsave(snakemake@output[["class_by_count_short"]], width = 7, height = 5)
+ggsave(snakemake@output[["class_by_type_short"]], width = 7, height = 5)
 
 df_vcf_rid_anno_short %>%
   ggplot(aes(y = fct_rev(variant_class), fill = ng_group)) +
   geom_bar() +
   facet_wrap(c("group_name")) +
   labs(x = NULL, y = NULL, fill = "Error count\n(pat, mat)")
-ggsave(snakemake@output[["class_by_number_short"]], width = 7, height = 5)
+ggsave(snakemake@output[["class_by_count_short"]], width = 7, height = 5)
 
 #
 # how many het_hom_mismatches are "average collapses"? (needed to test the

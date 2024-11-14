@@ -669,22 +669,25 @@ rule get_matches:
 rule plot_match_summary:
     input:
         vcf=rules.phase_happy.output.fixed,
-        hits=rules.get_matches.output.hits,
+        hit=rules.get_matches.output.hits,
         v_nohit=rules.get_matches.output.v_nohit,
         g_nohit=rules.get_matches.output.g_nohit,
         gbench=rules.summarize_bench.output.gbench,
     output:
         g_matches = final_dir / "match_summary" / "genome_error_hits.pdf",
         v_matches = final_dir / "match_summary" / "variant_hits.pdf",
-        class_by_type = final_dir / "match_summary" / "class_by_type.pdf",
-        class_by_number = final_dir / "match_summary" / "class_by_number.pdf",
-        class_by_type_short = final_dir / "match_summary" / "class_by_type_short.pdf",
-        class_by_number_short = final_dir / "match_summary" / "class_by_number_short.pdf",
-        ave_collapse = final_dir / "match_summary" / "average_collapse.pdf",
         vg_matches = final_dir / "match_summary" / "vg_hits.pdf",
+        class_by_type = final_dir / "match_summary" / "class_by_type.pdf",
+        class_by_count = final_dir / "match_summary" / "class_by_count.pdf",
+        class_by_type_short = final_dir / "match_summary" / "class_by_type_short.pdf",
+        class_by_count_short = final_dir / "match_summary" / "class_by_count_short.pdf",
+        ave_collapse = final_dir / "match_summary" / "average_collapse.pdf",
         annotated = final_dir / "match_summary" / "annotated.tsv.gz",
-        annotated = final_dir / "match_summary" / "annotated.tsv.gz",
-        
+    conda:
+        "envs/r.yml"
+    script:
+        "scripts/R/make_plots.R"
+
 
 rule all:
     input:
