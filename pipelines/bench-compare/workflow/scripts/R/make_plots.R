@@ -1,5 +1,19 @@
 library(tidyverse)
 
+pretty_theme <-
+    theme(text = element_text(size = 6),
+          line = element_line(linewidth = 0.2),
+          axis.ticks.length = unit(0.25, "mm"),
+          axis.line = element_line(linewidth = 0.15),
+          legend.box.spacing = unit(0.2, "cm"),
+          legend.margin = margin(0, 0, 0.75, 0, "mm"),
+          plot.margin = margin(1, 1, 1, 1, "mm"),
+          legend.key.size = unit(0.55, "lines"),
+          legend.spacing = unit(1.5, "mm"),
+          strip.text = element_text(size = rel(1), margin = margin(1, 1, 1, 1, "mm")),
+          strip.background = element_rect(linetype = "blank",
+                                          fill = "gray"))
+
 ensure <- function(test, msg) {
   if (!test) {
     print(test)
@@ -112,15 +126,6 @@ annotate_vcf <- function(df) {
     select(-format, -truth, -query)
 }
 
-df_vcf0 <- read_tsv(
-  snakemake@input[["vcf"]],
-  col_types = "ciicc---ccc",
-  col_names = c("chrom", "start", "vid", "ref", "alt", "format", "truth", "query")
-)
-
-df_vcf <- df_vcf0 %>%
-  annotate_vcf()
-
 df_hits <- read_tsv(
   snakemake@input[["hit"]],
   na = "NA",
@@ -208,9 +213,32 @@ df_g_nohit <- read_tsv(
 ) %>%
   add_column(hits = FALSE)
 
-#
-# some overall plots
-#
+df_vcf_rid_anno <- read_tsv(
+  snakemake@input[["annotated"]],
+  col_types = c(
+    rid0 = "i",
+    rid1 = "i",
+    chrom = "i",
+    start = "i",
+    ref = "c",
+    tp = "c",
+    tm = "c",
+    qp = "c",
+    qm = "c",
+    t_gt = "c",
+    q_gt = "c",
+    t_bd = "c",
+    q_bd = "c",
+    t_bk = "c",
+    q_bk = "c",
+    error_type = "c",
+    variant_status = "c",
+    variant_class = "c",
+    ng_group = "c",
+    group_name = "c",
+    .default = "-"
+  )
+)
 
 df_hits %>%
   select(hap, gid, match_id, error_type, hits) %>%
@@ -231,8 +259,10 @@ df_hits %>%
     )
   ) +
   geom_bar() +
-  labs(x = NULL, y = "number of genome errors", fill = "expected variant hit")
-ggsave(snakemake@output[["g_matches"]])
+  theme(legend.position = "bottom") +
+  pretty_theme +
+  labs(x = NULL, y = "number of genome errors", fill = "Error Type")
+ggsave(snakemake@output[["g_matches"]], units = "mm", width = 50, height = 60)
 
 df_hit_match_counts <- df_hits %>%
   filter(!is.na(match_id)) %>%
@@ -265,409 +295,46 @@ df_hit_counts %>%
   ggplot(aes(ng, fill = factor(nv))) +
   geom_bar() +
   facet_wrap(c("which")) +
+  pretty_theme +
   labs(
     # TODO this is actually a bit misleading since the matches aren't per intersection
-    fill = "variants per\nintersection",
+    x = "genome errors\nper intersection",
     y = "intersection count",
-    x = "genome errors\nper intersection"
+    fill = "variants per\nintersection"
   )
-ggsave(snakemake@output[["vg_matches"]])
-
-#
-# (attempt to) classify stuff
-#
-
-df_error_types <- df_hits %>%
-  mutate(.is_consensus = error_type == "CONSENSUS") %>%
-  group_by(match_id, isec) %>%
-  summarize(
-    error_type = case_when(
-      all(.is_consensus) ~ "CONSENSUS",
-      all(!.is_consensus) ~ "PHASING",
-      TRUE ~ "MIXED"
-    ),
-    .groups = "drop"
-  )
-
-# for each vid, pivot all genome errors onto pat/mat haplotypes; each row is
-# one vid
-df_isec_match <- df_hits %>%
-  select(hap, vid, match_id, match_nv, match_nv1, match_ng, isec, isec_ng) %>%
-  unique() %>%
-  pivot_wider(
-    id_cols = vid,
-    values_from = c(match_id, match_nv, match_nv1, match_ng, isec, isec_ng),
-    names_from = hap,
-    names_glue = "{hap}_{.value}"
-  ) %>%
-  left_join(
-    rename_with(df_error_types, ~ sprintf("pat_%s", .x)),
-    by = c("pat_match_id", "pat_isec")
-  ) %>%
-  left_join(
-    rename_with(df_error_types, ~ sprintf("mat_%s", .x)),
-    by = c("mat_match_id", "mat_isec")
-  ) %>%
-  rename_with(~ str_replace(.x, "_match", ""), matches("(nv|ng)$")) %>%
-  rename_with(~ str_replace(.x, "match_", "m"), ends_with("match_id")) %>%
-  mutate(
-    in_match = !is.na(mat_mid) | !is.na(pat_mid),
-    error_type = case_when(
-      is.na(mat_error_type) ~ pat_error_type,
-      is.na(pat_error_type) ~ mat_error_type,
-      pat_error_type != mat_error_type ~ "MIXED",
-      pat_error_type == mat_error_type ~ pat_error_type,
-      TRUE ~ "SOMETHING"
-    )
-  ) %>%
-  replace_na(
-    list(
-      pat_nv = 0, mat_nv = 0,
-      pat_ng = 0, mat_ng = 0,
-      pat_isec_ng = 0, mat_isec_ng = 0
-    )
-  )
-
-# variants without a hit, one row = one vid
-df_v_nohit_unique <- df_v_nohit %>%
-  mutate(missing_hit = !is.na(isec)) %>%
-  select(vid, missing_hit) %>%
-  unique() %>%
-  add_column(nohit = TRUE)
-
-error_num <- function(p, m) {
-  case_when(
-    is.na(p) & is.na(m) ~ "none",
-    p == 0 & m == 0 ~ "none",
-    p > 1 | m > 1 ~ "many",
-    TRUE ~ sprintf("%s,%s", as.character(p), as.character(m))
-  )
-}
-
-# vcf file annotated with genome error match data (or lack thereof); one
-# line = one variant
-df_vcf_isec_match <- df_vcf %>%
-  left_join(df_isec_match, by = "vid") %>%
-  left_join(df_v_nohit_unique, by = "vid") %>%
-  replace_na(list(nohit = FALSE)) %>%
-  mutate(
-    ng_group = case_when(
-      in_match ~ error_num(pat_ng, mat_ng),
-      !in_match ~ error_num(pat_isec_ng, mat_isec_ng),
-      TRUE ~ "none"
-    ),
-    group_name = sprintf(
-      "1 Line - %s | %s",
-      if_else(t_bd == ".", "none", t_bd),
-      if_else(q_bd == ".", "none", q_bd)
-    ),
-    has_error = !(t_bd == "TP" | q_bd == "TP")
-  )
-
-select_pat_or_mat <- function(df, hap0, hap1, i) {
-  df_i <- df %>%
-    select({{ hap0 }}, {{ i }}) %>%
-    filter(!is.na({{ hap0 }})) %>%
-    unique() %>%
-    rename({{ hap1 }} := {{ i }})
-  # each pat/mat id should only appear once
-  df_i %>%
-    group_by({{ hap0 }}) %>%
-    tally() %>%
-    filter(n > 1) %>%
-    ensure_empty("hap must appear only once")
-  df_i
-}
-
-# Figure out which indices across pat/mat columns "belong together" (ie have
-# shared indices) and index each of the resulting groups. For example, [NA, 1,
-# 2] and [1, 2, NA] in three rows across pat/mat columns respectively would be
-# grouped together.
-group_indices <- function(df, pat, mat, i, c) {
-  .pat <- rlang::as_name(enquo(pat))
-  .mat <- rlang::as_name(enquo(mat))
-  df_mp <- df %>%
-    select({{ pat }}, {{ mat }})
-  df_pairs <- df_mp %>%
-    filter(!is.na({{ pat }}) & !is.na({{ mat }})) %>%
-    unique()
-  # ensure each of these columns are monotonically increasing, otherwise the
-  # indexing thing we do won't work
-  df_pairs %>%
-    filter(lag({{ pat }}) > {{ pat }}) %>%
-    ensure_empty("pat must be in order")
-  df_pairs %>%
-    filter(lag({{ mat }}) > {{ mat }}) %>%
-    ensure_empty("mat must be in order")
-  df_i <- df_pairs %>%
-    mutate(
-      {{ i }} := cumsum(
-        lag({{ pat }}, default = 0) < {{ pat }} &
-          lag({{ mat }}, default = 0) < {{ mat }}
-      )
-    )
-  df_pat_only <- df_mp %>%
-    anti_join(df_pairs, by = .pat) %>%
-    filter(!is.na({{ pat }})) %>%
-    unique()
-  df_mat_only <- df_mp %>%
-    anti_join(df_pairs, by = .mat) %>%
-    filter(!is.na({{ mat }})) %>%
-    unique()
-  max_i <- df_i %>% pull({{ i }}) %>% max()
-  df_i_all <- bind_rows(df_pat_only, df_mat_only) %>%
-    mutate({{ i }} := row_number() + max_i) %>%
-    bind_rows(df_i)
-  df_i_p <- select_pat_or_mat(df_i_all, {{ pat }}, .pat_i, {{ i }})
-  df_i_m <- select_pat_or_mat(df_i_all, {{ mat }}, .mat_i, {{ i }})
-  df %>%
-    left_join(df_i_p, by = .pat) %>%
-    left_join(df_i_m, by = .mat) %>%
-    # ASSUME that these will always be the same if both are present, the reason
-    # why this is necessary is to fill the rows where only pat or mat was
-    # present
-    mutate({{ i }} := coalesce(.pat_i, .mat_i)) %>%
-    select(-.mat_i, -.pat_i) %>%
-    group_by({{ i }}) %>%
-    mutate({{ c }} := if_else(is.na({{ i }}), NA, n())) %>%
-    ungroup()
-}
-
-# variants that are grouped based on the errors they intersect. One line = one
-# variant. rid0 is the group based on the intersection index (ie a "hit") and
-# rid1 is the same for shared match_ids
-df_vcf_rid <- df_vcf_isec_match %>%
-  group_indices(pat_isec, mat_isec, rid0, nr0) %>%
-  group_indices(pat_mid, mat_mid, rid1, nr1) %>%
-  group_by(rid1) %>%
-  ungroup() %>%
-  mutate(
-    nr1 = if_else(in_match, nr1, 0),
-  ) %>%
-  relocate(vid, rid0, rid1, nr0, nr1)
-
-# Groups of variants with two variants per group, with updated variant classes
-# based on the genotypes (and other stuff) of each variant in the pair. The
-# general strategy is to imagine what the genotype would look like if the
-# variant were written on one line, which in many cases is easy to figure out or
-# assume. Note, we don't care about anything beyond paired variants (or single
-# which don't require special treatment) since these are insanely complex and
-# not that common.
-df_ref_matches2 <- df_vcf_rid %>%
-  filter(nr1 == 2) %>%
-  filter(pat_ng < 2 & mat_ng < 2) %>%
-  group_by(rid1) %>%
-  # All of these are "split" across 2 variants, so arrange the variants using
-  # their BD field so that the first and second are predictable, and therefore
-  # we can classify based on their patterns
-  arrange(t_bd, q_bd) %>%
-  summarize(
-    chrom = first(chrom),
-    start0 = first(start),
-    start1 = last(start),
-    ref0 = first(ref),
-    ref1 = last(ref),
-    tgt0 = first(t_gt),
-    tgt1 = last(t_gt),
-    qgt0 = first(q_gt),
-    qgt1 = last(q_gt),
-    tbk0 = first(t_bk),
-    tbk1 = last(t_bk),
-    qbk0 = first(q_bk),
-    qbk1 = last(q_bk),
-    tp0 = first(tp),
-    tp1 = last(tp),
-    tm0 = first(tm),
-    tm1 = last(tm),
-    qp0 = first(qp),
-    qp1 = last(qp),
-    qm0 = first(qm),
-    qm1 = last(qm),
-    nFN = sum(t_bd == "FN"),
-    nFP = sum(q_bd == "FP"),
-    ntTP = sum(t_bd == "TP"),
-    nqTP = sum(t_bd == "TP"),
-    pat_ng0 = first(pat_ng),
-    mat_ng0 = first(mat_ng),
-    pat_ng1 = last(pat_ng),
-    mat_ng1 = last(mat_ng)
-  ) %>%
-  mutate(
-    .variant_class = case_when(
-      # ASSUME these are collapses where both lines are far away from each other
-      # and if written on one line would be 1|2+1|1
-      tgt0 == "0|1" & tgt1 == "1|0" & qgt0 == "." & qgt1 == "1|1" ~ "collapse",
-      tgt0 == "1|0" & tgt1 == "0|1" & qgt0 == "." & qgt1 == "1|1" ~ "collapse",
-      # ASSUME this is basically the above case but written in a strange way
-      tgt0 == ".|1" & tgt1 == "1|0" & qgt0 == "." & qgt1 == "1|1" ~ "collapse",
-      tgt0 == "1|." & tgt1 == "0|1" & qgt0 == "." & qgt1 == "1|1" ~ "collapse",
-      # ASSUME these would be written as 2|1+3|0 on one line (I suppose there
-      # is a small chance that it may be valid as 2|1+1|0); if these are bi_het
-      # then they should also have two errors on either hap. The alternatives
-      # seem to be rare and complicated, either involving other variant lines
-      # or genome errors that were missed
-      tgt0 == "." & tgt1 == "2|1" & qgt0 == "1|0" & qgt1 == "." ~
-        if_else(pat_ng1 == 1 & mat_ng1 == 1, "bi_het_mismatch", "TODO1"),
-      tgt0 == "." & tgt1 == "1|2" & qgt0 == "0|1" & qgt1 == "." ~
-        if_else(pat_ng1 == 1 & mat_ng1 == 1, "bi_het_mismatch", "TODO1"),
-      # ASSUME if these groups intersect with 2 variants then they are bi-het
-      # mismatches and the GT fields are like 2|1+0|3 (or reverse). If they
-      # only have one error, then either they are also bi_het_mismatches and
-      # the error didn't match or liftover or they are just het_mismatches
-      # and are actually on 3 lines with one line missing, so either way they
-      # don't belong to the "simple" groups
-      tgt0 == "." & tgt1 == "2|1" & qgt0 == "0|1" & qgt1 == "." ~
-        if_else(pat_ng1 == 1 & mat_ng1 == 1, "bi_het_mismatch", "TODO2"),
-      tgt0 == "." & tgt1 == "1|2" & qgt0 == "1|0" & qgt1 == "." ~
-        if_else(pat_ng1 == 1 & mat_ng1 == 1, "bi_het_mismatch", "TODO2"),
-      # ASSUME these would be written as 1|1+1|2 on single line
-      tgt0 == "." & tgt1 == "1|1" & qgt0 == "0|1" & qgt1 == "1|0" ~ "rev_collapse",
-      tgt0 == "." & tgt1 == "1|1" & qgt0 == "1|0" & qgt1 == "0|1" ~ "rev_collapse",
-      # These are either het_mismatches or bi_het_mismatches, not clear what
-      # distinguishes them, they are quite rare regardless
-      tgt0 == "." & tgt1 == ".|1" & qgt0 == "0|1" & qgt1 == "." ~ "TODO3",
-      tgt0 == "." & tgt1 == "1|." & qgt0 == "1|0" & qgt1 == "." ~ "TODO3",
-      # ASSUME these would be written like 1|2+1|1; most of these seem to be
-      # split because the half call variant represents a het->hom SNP and the
-      # het->null variant is a single base deletion (TODO are these special?)
-      tgt0 == "1|0" & tgt1 == ".|1" & qgt0 == "." & qgt1 == "1|1" ~ "collapse",
-      tgt0 == "0|1" & tgt1 == "1|." & qgt0 == "." & qgt1 == "1|1" ~ "collapse",
-      # obvious case, should be 1|1+2|2 if on the same line (and since they
-      # aren't they clearly don't match, hence the different allele numbers)
-      tgt0 == "." & tgt1 == "1|1" & qgt0 == "1|1" & qgt1 == "." ~ "hom_mismatch",
-      # ASSUME if these were written on the same line that they would look like
-      # 1|2+1|3 (ie one het mismatches). This is justified because if the 2 and
-      # 3 alleles matched, then the lines wouldn't be split apart like this
-      tgt0 == "." & tgt1 == "1|2" & qgt0 == "0|1" & qgt1 == "1|0" ~ "het_mismatch",
-      tgt0 == "." & tgt1 == "2|1" & qgt0 == "1|0" & qgt1 == "0|1" ~ "het_mismatch",
-      # ASSUME same as above, these would be written on one line like 0|1+0|2
-      tgt0 == "." & tgt1 == "0|1" & qgt0 == "0|1" & qgt1 == "." ~ "het_mismatch",
-      tgt0 == "." & tgt1 == "1|0" & qgt0 == "1|0" & qgt1 == "." ~ "het_mismatch",
-      # Simply comparing the GT field is not enough to classify these, since if
-      # compressed to one line they could be written as 1|2+1|1, 1|2+2|2, or
-      # 1|2+3|3 (the first of which are collapses). However, many (but not all
-      # of these) of these variant pairs start/end on the same position, so we
-      # can directly compare the alleles in the vcf to figure this out.
-      tgt0 == "." & tgt1 %in% c("1|2", "2|1") & qgt0 == "1|1" & qgt1 == "." ~
-        "collapse/het_hom_mismatch",
-      # ASSUME that the 1|1 would be written like 2|2 if these were on the same line
-      tgt0 == "." & tgt1 %in% c("1|0", "0|1") & qgt0 == "1|1" & qgt1 == "." ~ "het_hom_mismatch",
-      TRUE ~ "other"
-    )
-  ) %>%
-  mutate(
-    .truth_name = case_when(
-      ntTP == 0 & nFN == 0 ~ "none",
-      ntTP == 0 & nFN == 1 ~ "FN",
-      ntTP == 1 & nFN == 0 ~ "TP",
-      ntTP == 1 & nFN == 1 ~ "TP+FN",
-      ntTP == 2 & nFN == 0 ~ "2xTP",
-      ntTP == 0 & nFN == 2 ~ "2xFN",
-      TRUE ~ "other"
-    ),
-    .query_name = case_when(
-      nqTP == 0 & nFP == 0 ~ "none",
-      nqTP == 0 & nFP == 1 ~ "FP",
-      nqTP == 1 & nFP == 0 ~ "TP",
-      nqTP == 1 & nFP == 1 ~ "TP+FP",
-      nqTP == 2 & nFP == 0 ~ "2xTP",
-      nqTP == 0 & nFP == 2 ~ "2xFP",
-      TRUE ~ "other"
-    ),
-    .group_name = sprintf("2 Line - %s | %s", .truth_name, .query_name)
-  )
-
-# update vcf annotations with new variant classes from above using paired
-# variants
-df_vcf_rid_anno <- df_ref_matches2 %>%
-  select(rid1, .variant_class, .group_name) %>%
-  right_join(df_vcf_rid, by = "rid1") %>%
-  mutate(
-    variant_class = coalesce(.variant_class, variant_class),
-    group_name = coalesce(.group_name, group_name),
-  ) %>%
-  select(-starts_with(".")) %>%
-  # these are actually het_mismatches but are misclassified as het_hom_mismatches
-  mutate(
-    .correct_het_hom = group_name == "1 Line - FN | none" &
-      ng_group %in% c("1,0", "0,1") &
-      variant_class == "het_hom_mismatch",
-    variant_class = if_else(.correct_het_hom, "het_mismatch", variant_class),
-    group_name = if_else(.correct_het_hom, "2 Line - FN | FP", group_name)
-  ) %>%
-  mutate(
-    variant_class = if_else(nr1 > 2, "other", variant_class),
-    group_name = case_when(
-      nr1 == 0 ~ "unmatched",
-      nr1 > 2 ~ "complex",
-      TRUE ~ group_name
-    ),
-    group_name = case_when(
-      variant_class %in% c("TODO1", "TODO2", "TODO3") ~ "complex",
-      group_name %in% c(
-        "1 Line - none | N",
-        "1 Line - none | TP",
-        "1 Line - TP | FP",
-        "1 Line - TP | none",
-        "2 Line - 2xTP | 2xTP",
-        "2 Line - FN | none",
-        "2 Line - none | none",
-        "2 Line - TP | TP",
-        "2 Line - TP | TP+FP",
-        "2 Line - TP+FN | TP",
-        "2 Line - TP+FN | TP+FP"
-      ) ~ "complex",
-      TRUE ~ group_name
-    ),
-    variant_class = case_when(
-      str_detect(variant_class, "TODO") ~ "bi_het_mismatch/het_mismatch",
-      TRUE ~ variant_class
-    ),
-    variant_status = factor(
-      case_when(
-        nr1 > 0 ~ "matched",
-        nr1 == 0 ~ "unmatched",
-        is.na(nr1) & nohit & missing_hit ~ "missing_hit",
-        is.na(nr1) & nohit & !missing_hit ~ "no_hit",
-        TRUE ~ NA
-      ),
-      levels = c("matched", "unmatched", "missing_hit", "no_hit")
-    )
-  )
-
-# print annotated variants for subsequent viewing pleasure
-df_vcf_rid_anno %>%
-  filter(!is.na(variant_status)) %>%
-  select(chrom, start, ref, alt, t_gt, q_gt, t_bd, q_bd, pat_error_type, mat_error_type, error_type, ng_group, variant_class, group_name) %>%
-  write_tsv(snakemake@output[["annotated"]])
-
-
-#
-# plot the universe
-#
+ggsave(snakemake@output[["vg_matches"]], units = "mm", width = 80, height = 80)
 
 df_vcf_rid_anno %>%
+  mutate(variant_status = if_else(variant_status == "missing_hit", "no_hit", variant_status)) %>%
+  mutate(variant_status = fct_relevel(factor(variant_status), "no_hit", after = 2)) %>%
   filter(!is.na(variant_status)) %>%
   ggplot(aes(variant_status, fill = ng_group)) +
   geom_bar() +
-  labs(x = NULL, y = NULL, fill = "Error Count\n(pat, mat)")
-ggsave(snakemake@output[["v_matches"]])
+  labs(x = NULL, y = "number of variants", fill = "Error Count\n(pat, mat)") +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
+  pretty_theme
+ggsave(snakemake@output[["v_matches"]], units = "mm", width = 50, height = 60)
 
 df_vcf_rid_anno %>%
   filter(!is.na(rid0)) %>%
   ggplot(aes(y = variant_class, fill = error_type)) +
   geom_bar() +
   facet_wrap(c("group_name")) +
+  pretty_theme +
+  theme(legend.position = "bottom") +
   labs(x = NULL, y = NULL, fill = "Error Type")
-ggsave(snakemake@output[["class_by_type"]], width = 11, height = 10)
+ggsave(snakemake@output[["class_by_type"]], units = "mm", width = 90, height = 130)
 
 df_vcf_rid_anno %>%
   filter(!is.na(rid0)) %>%
   ggplot(aes(y = variant_class, fill = ng_group)) +
   geom_bar() +
   facet_wrap(c("group_name")) +
+  pretty_theme +
+  theme(legend.position = "bottom") +
   labs(x = NULL, y = NULL, fill = "Error count\n(pat, mat)")
-ggsave(snakemake@output[["class_by_count"]], width = 11, height = 10)
+ggsave(snakemake@output[["class_by_count"]], units = "mm", width = 90, height = 130)
 
 # collapse variant classes into "umbrella classes" which better describe the
 # "mechanism" for how the variant arose
@@ -689,18 +356,25 @@ df_vcf_rid_anno_short <- df_vcf_rid_anno %>%
   mutate(variant_class = factor(variant_class, levels = c("Collapses", "Seq Errors", "Misphases", "Misphases/Seq Errors", "Other Errors")))
 
 df_vcf_rid_anno_short %>%
+  filter(group_name != "unmatched") %>%
+  mutate(error_type = fct_relevel(factor(error_type), "MIXED", after = 2)) %>%
   ggplot(aes(y = fct_rev(variant_class), fill = error_type)) +
   geom_bar() +
   facet_wrap(c("group_name")) +
-  labs(x = NULL, y = NULL, fill = "Error Type")
-ggsave(snakemake@output[["class_by_type_short"]], width = 7, height = 5)
+  labs(x = NULL, y = NULL, fill = "Error Type") +
+  theme(legend.position = "bottom") +
+  pretty_theme
+ggsave(snakemake@output[["class_by_type_short"]], width = 80, height = 55, units = "mm")
 
 df_vcf_rid_anno_short %>%
+  filter(group_name != "unmatched") %>%
   ggplot(aes(y = fct_rev(variant_class), fill = ng_group)) +
   geom_bar() +
   facet_wrap(c("group_name")) +
-  labs(x = NULL, y = NULL, fill = "Error count\n(pat, mat)")
-ggsave(snakemake@output[["class_by_count_short"]], width = 7, height = 5)
+  labs(x = NULL, y = NULL, fill = "Error count\n(pat, mat)") +
+  theme(legend.position = "bottom") +
+  pretty_theme
+ggsave(snakemake@output[["class_by_count_short"]], width = 80, height = 55, units = "mm")
 
 #
 # how many het_hom_mismatches are "average collapses"? (needed to test the
@@ -757,5 +431,6 @@ df_ave_collapse1 %>%
   mutate(y = if_else(is_ave_collapse, "Ave. Collapse", "Not Ave. Collapse")) %>%
   ggplot(aes(y = y, fill = group_name)) +
   geom_bar() +
+  pretty_theme +
   labs(x = "count", y = NULL, fill = "category")
-ggsave(snakemake@output[["ave_collapse"]])
+ggsave(snakemake@output[["ave_collapse"]], units = "mm", width = 80, height = 80)

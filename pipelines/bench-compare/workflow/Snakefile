@@ -666,9 +666,25 @@ rule get_matches:
         "scripts/R/get_matches.R"
 
 
-rule plot_match_summary:
+rule annotate_vcf:
     input:
         vcf=rules.phase_happy.output.fixed,
+        hit=rules.get_matches.output.hits,
+        v_nohit=rules.get_matches.output.v_nohit,
+        g_nohit=rules.get_matches.output.g_nohit,
+        gbench=rules.summarize_bench.output.gbench,
+    output:
+        all=final_dir / "match_summary" / "annotated_all.tsv.gz",
+        hit=final_dir / "match_summary" / "annotated_hits.tsv.gz",
+    conda:
+        "envs/r.yml"
+    script:
+        "scripts/R/annotate_vcf.R"
+
+
+rule plot_match_summary:
+    input:
+        annotated=rules.annotate_vcf.output.all,
         hit=rules.get_matches.output.hits,
         v_nohit=rules.get_matches.output.v_nohit,
         g_nohit=rules.get_matches.output.g_nohit,
@@ -682,7 +698,6 @@ rule plot_match_summary:
         class_by_type_short = final_dir / "match_summary" / "class_by_type_short.pdf",
         class_by_count_short = final_dir / "match_summary" / "class_by_count_short.pdf",
         ave_collapse = final_dir / "match_summary" / "average_collapse.pdf",
-        annotated = final_dir / "match_summary" / "annotated.tsv.gz",
     conda:
         "envs/r.yml"
     script:
