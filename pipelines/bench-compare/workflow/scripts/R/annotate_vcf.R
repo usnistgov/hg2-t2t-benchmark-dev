@@ -114,8 +114,8 @@ annotate_vcf <- function(df) {
 
 df_vcf0 <- read_tsv(
   snakemake@input[["vcf"]],
-  col_types = "ciicc---ccc",
-  col_names = c("chrom", "start", "vid", "ref", "alt", "format", "truth", "query")
+  col_types = "ciicc--cccc",
+  col_names = c("chrom", "start", "vid", "ref", "alt", "regions", "format", "truth", "query")
 )
 
 df_vcf <- df_vcf0 %>%
@@ -351,7 +351,8 @@ df_vcf_rid <- df_vcf_isec_match %>%
   mutate(
     nr1 = if_else(in_match, nr1, 0),
   ) %>%
-  relocate(vid, rid0, rid1, nr0, nr1)
+  relocate(vid, rid0, rid1, nr0, nr1) %>%
+  relocate(regions, .after = everything())
 
 # Groups of variants with two variants per group, with updated variant classes
 # based on the genotypes (and other stuff) of each variant in the pair. The
@@ -548,5 +549,5 @@ df_vcf_rid_anno %>%
 # print annotated variants for subsequent viewing pleasure
 df_vcf_rid_anno %>%
   filter(!is.na(variant_status)) %>%
-  select(chrom, start, ref, alt, t_gt, q_gt, t_bd, q_bd, pat_error_type, mat_error_type, error_type, ng_group, variant_class, group_name) %>%
+  select(chrom, start, ref, alt, t_gt, q_gt, t_bd, q_bd, tp, tm, qp, qm, pat_error_type, mat_error_type, error_type, ng_group, variant_class, group_name, regions) %>%
   write_tsv(snakemake@output[["hit"]])
