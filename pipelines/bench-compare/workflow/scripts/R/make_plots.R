@@ -1,18 +1,17 @@
 library(tidyverse)
 
 pretty_theme <-
-    theme(text = element_text(size = 6),
-          line = element_line(linewidth = 0.2),
-          axis.ticks.length = unit(0.25, "mm"),
-          axis.line = element_line(linewidth = 0.15),
-          legend.box.spacing = unit(0.2, "cm"),
-          legend.margin = margin(0, 0, 0.75, 0, "mm"),
-          plot.margin = margin(1, 1, 1, 1, "mm"),
-          legend.key.size = unit(0.55, "lines"),
-          legend.spacing = unit(1.5, "mm"),
-          strip.text = element_text(size = rel(1), margin = margin(1, 1, 1, 1, "mm")),
-          strip.background = element_rect(linetype = "blank",
-                                          fill = "gray"))
+  theme(text = element_text(size = 6),
+        line = element_line(linewidth = 0.2),
+        axis.ticks.length = unit(0.25, "mm"),
+        axis.line = element_line(linewidth = 0.15),
+        legend.box.spacing = unit(0.2, "cm"),
+        legend.margin = margin(0, 0, 0.75, 0, "mm"),
+        plot.margin = margin(1, 1, 1, 1, "mm"),
+        legend.key.size = unit(0.55, "lines"),
+        legend.spacing = unit(1.5, "mm"),
+        strip.text = element_text(size = rel(1), margin = margin(1, 1, 1, 1, "mm")),
+        strip.background = element_rect(linetype = "blank",
 
 ensure <- function(test, msg) {
   if (!test) {
