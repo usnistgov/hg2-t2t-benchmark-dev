@@ -16,7 +16,7 @@ gcols <- c("gchrom", "gstart", "gend", "realstart", "realend", "gid",
 	   "q100_len", "hprc_len", "seq"
 	   )
 
-gtypes = "ciiiiidcccciiiic"
+gtypes = "ciiiiidcccciiiiliic"
 
 vcols <- c("vchrom", "vstart", "vend", "vid", "ref", "alt", "regions", 
 	   "truth_blt", "truth_bd", "truth_gt", "truth_bk",
@@ -30,9 +30,9 @@ vtypes <- "ciiiccccccccccccicil"
 read_vbench <- function(path) {
   read_tsv(
     path,
-    col_types = c(vtypes, gtypes),
+    col_types = paste0(vtypes, gtypes),
     col_names = c(vcols, gcols),
-    na = ".",
+    na = c(".", "NA"),
   ) %>%
     split_path(path)
 }
@@ -40,9 +40,9 @@ read_vbench <- function(path) {
 read_gbench <- function(path) {
   read_tsv(
     path,
-    col_types = c(gtypes, vtypes),
+    col_types = paste0(gtypes, vtypes),
     col_names = c(gcols, vcols),
-    na = ".",
+    na = c(".", "NA"),
   ) %>%
     split_path(path)
 }

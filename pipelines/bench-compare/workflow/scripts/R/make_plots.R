@@ -11,7 +11,8 @@ pretty_theme <-
         legend.key.size = unit(0.55, "lines"),
         legend.spacing = unit(1.5, "mm"),
         strip.text = element_text(size = rel(1), margin = margin(1, 1, 1, 1, "mm")),
-        strip.background = element_rect(linetype = "blank",
+        strip.background = element_rect(linetype = "blank")
+	)
 
 ensure <- function(test, msg) {
   if (!test) {
@@ -212,6 +213,53 @@ df_g_nohit <- read_tsv(
 ) %>%
   add_column(hits = FALSE)
 
+proc_df <- function(df) {
+  df %>%
+    separate_longer_delim(data, "~") %>%
+    separate(data, ";", into = c("error_type", NA, NA, NA, NA, NA, "gid", "error_group", "error_group_size", NA)) %>%
+    separate(chrom, "_", into = c("chrom", "hap")) %>%
+    mutate(gid = as.integer(gid)) %>%
+    mutate(error_group_size = as.integer(error_group_size)) %>%
+    filter(!chrom %in% c("chrX", "chrY")) %>%
+    mutate(chrom = as.integer(str_sub(chrom, 4)))
+}
+
+df_errors0 <- read_tsv(
+  snakemake@input[["src"]],
+  col_names = c("chrom", "start", "end", "data"),
+  col_types = "ciic"
+) %>%
+  proc_df
+
+df_errors1 <- read_tsv(
+  snakemake@input[["projectable"]],
+  col_names = c("chrom", "start", "end", "overlap", "data"),
+  col_types = "ciidc"
+) %>%
+  proc_df
+
+read_smallvar <- function(which) {
+  df_smallvar_pat <- read_tsv(
+    snakemake@input[[sprintf("smallvar_%s", which)]],
+    col_types = "c--iii----------",
+    col_names = c("chrom", "start", "end", "gid")
+  ) %>%
+  add_column(hap = if_else(which == "pat", "PATERNAL", "MATERNAL"))
+}
+
+df_smallvar <- bind_rows(
+  read_smallvar("pat"),
+  read_smallvar("mat")
+)
+
+df_small_ids <- df_smallvar %>%
+  select(gid, hap) %>%
+  unique()
+
+df_errors1_n <- df_errors1 %>%
+  group_by(hap, gid) %>%
+  tally()
+
 df_vcf_rid_anno <- read_tsv(
   snakemake@input[["annotated"]],
   col_types = c(
@@ -239,6 +287,21 @@ df_vcf_rid_anno <- read_tsv(
   )
 )
 
+df_errors_grouped <- df_errors0 %>%
+  left_join(df_errors1_n, by = c("gid", "hap")) %>%
+  mutate(projected = !is.na(n)) %>%
+  anti_join(df_small_ids, by = c("gid", "hap")) %>%
+  mutate(
+    status = case_when(
+      projected ~ "outside",
+      !projected ~ "no_project",
+      TRUE ~ "unknown"
+    )
+  ) %>%
+  replace_na(list(n = 0)) %>%
+  select(hap, gid, status, error_type) %>%
+  unique()
+
 df_hits %>%
   select(hap, gid, match_id, error_type, hits) %>%
   unique() %>%
@@ -251,15 +314,17 @@ df_hits %>%
     )
   ) %>%
   replace_na(list(genome_expected = TRUE)) %>%
+  bind_rows(df_errors_grouped) %>%
   ggplot(
     aes(
-      x = factor(status, levels = c("matched", "unmatched", "missing_hit", "no_hit")),
+      x = factor(status, levels = c("matched", "unmatched", "missing_hit", "no_hit", "outside", "no_project")),
       fill = error_type
     )
   ) +
   geom_bar() +
   theme(legend.position = "bottom") +
   pretty_theme +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
   labs(x = NULL, y = "number of genome errors", fill = "Error Type")
 ggsave(snakemake@output[["g_matches"]], units = "mm", width = 50, height = 60)
 

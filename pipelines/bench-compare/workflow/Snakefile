@@ -12,7 +12,7 @@ res_asm_dir = res_inter_dir / "asm" / "{hap}"
 res_ref_dir = res_inter_dir / "ref" / "{ref}"
 res_compbed_dir = res_inter_dir / "comparison" / "bed" / "{ref}"
 
-final_dir = res_dir / "final" / "{ref}"
+final_dir = res_dir / "final" / "{ref}" / "{qver}"
 
 HAPLOTYPES = ["pat", "mat"]
 
@@ -41,6 +41,11 @@ ERRORS = {
 HPRC_BAM = {
     "pat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v1.1/benchmark/results/hprc_hg002_curated_vs_v1.1/hg002_curated_pat_vs_diploid.sort.bam",
     "mat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v1.1/benchmark/results/hprc_hg002_curated_vs_v1.1/hg002_curated_mat_vs_diploid.sort.bam",
+}
+
+ERROR_TARBALLS = {
+    "pat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/benchmarking/q100_output_tarballs/hprc_year1_curated/hprc_curated_pat.qualiffyoutput.tar.gz",
+    "mat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/benchmarking/q100_output_tarballs/hprc_year1_curated/hprc_curated_mat.qualiffyoutput.tar.gz",
 }
 
 wildcard_constraints:
@@ -101,9 +106,38 @@ use rule download_asm as download_bench_bed with:
         url=lambda w: BENCH[w.ref]["bed"],
 
 
+use rule download_asm as download_error_tarball with:
+    output:
+        src_dir / "errors" / "v2" / "{hap}.tar.gz",
+    params:
+        url=lambda w: ERROR_TARBALLS[w.hap],
+
+
+rule extract_errors:
+    input:
+        rules.download_error_tarball.output,
+    output:
+        src_dir / "errors" / "v2" / "{hap}.bed",
+    shell:
+        """
+        tar xzfO {input} hprc_curated_{wildcards.hap}/hprc_curated_{wildcards.hap}.errortype.v1.1.bed > {output}
+        """
+
+
+rule extract_bam:
+    input:
+        rules.download_error_tarball.output,
+    output:
+        src_dir / "errors" / "v2" / "{hap}.bam",
+    shell:
+        """
+        tar xzfO {input} hprc_curated_{wildcards.hap}/hprc_curated_{wildcards.hap}_vs_v1.1.trimmedphased.split.sort.bam > {output}
+        """
+
+
 rule download_errors:
     output:
-        src_dir / "errors" / "{hap}.bed",
+        src_dir / "errors" / "v1" / "{hap}.bed",
     params:
         url=lambda w: ERRORS[w.hap],
     shell:
@@ -112,7 +146,7 @@ rule download_errors:
 
 rule download_error_bam:
     output:
-        src_dir / "errors" / "{hap}.bam",
+        src_dir / "errors" / "v1" / "{hap}.bam",
     params:
         url=lambda w: HPRC_BAM[w.hap],
     shell:
@@ -275,19 +309,19 @@ rule run_minimap:
 
 rule fix_errors:
     input:
-        rules.download_errors.output,
+        lambda w: rules.download_errors.output if w["qver"] == "v1" else rules.extract_errors.output,
     output:
-        res_asm_dir / "errors_fixed.bed",
+        res_asm_dir / "{qver}" / "errors_fixed.bed",
     script:
         "scripts/python/fix_errors.py"
 
 
 rule get_error_coverage:
     input:
-        bam=rules.download_error_bam.output,
+        bam=lambda w: rules.download_error_bam.output if w["qver"] == "v1" else rules.extract_bam.output,
         bed=rules.fix_errors.output,
     output:
-        res_asm_dir / "no_coverage.txt",
+        res_asm_dir / "{qver}" / "no_coverage.txt",
     conda:
         "envs/minimap.yml"
     # Get a list of all errors that are completely within a region of no
@@ -311,7 +345,7 @@ rule group_errors:
         bed=rules.fix_errors.output,
         nocov=rules.get_error_coverage.output,
     output:
-        res_asm_dir / "errors_grouped.bed",
+        res_asm_dir / "{qver}" / "errors_grouped.bed",
     conda:
         "envs/r.yml"
     script:
@@ -335,7 +369,7 @@ rule split_errors:
         bed=rules.group_errors.output,
         genome=lambda w: expand(rules.make_asm_genome.output, hap = w.mapped_hap),
     output:
-        res_asm_dir / "errors_slop50_{mapped_hap}.bed",
+        res_asm_dir / "{qver}" / "errors_slop50_{mapped_hap}.bed",
     params:
         chr_filter=lambda w: "PATERNAL" if w.mapped_hap == "pat" else "MATERNAL",
     conda:
@@ -367,11 +401,11 @@ rule run_liftover:
         bed=rules.split_errors.output,
         tooldir=rules.clone_liftover_scripts.output,
     output:
-        projectable=res_compbed_dir / "hprc_{hap}_q100_{mapped_hap}_projectable.bed",
-        projected=res_compbed_dir / "hprc_{hap}_q100_{mapped_hap}_projected.bed",
+        projectable=res_compbed_dir / "{qver}" / "hprc_{hap}_q100_{mapped_hap}_projectable.bed",
+        projected=res_compbed_dir / "{qver}" / "hprc_{hap}_q100_{mapped_hap}_projected.bed",
     threads: 8
     log:
-        res_compbed_dir / "hprc_{hap}_q100_{mapped_hap}.log",
+        res_compbed_dir / "hprc_{qver}_{hap}_q100_{mapped_hap}.log",
     resources:
         mem_mb=32000,
     conda:
@@ -682,8 +716,56 @@ rule annotate_vcf:
         "scripts/R/annotate_vcf.R"
 
 
+rule cat_projectable:
+    input:
+        expand(
+            rules.run_liftover.output.projectable,
+            zip,
+            allow_missing = True,
+            hap = ["pat", "mat"],
+            mapped_hap = ["pat", "mat"],
+        ),
+    output:
+        res_ref_dir / "{qver}" / "projectable_all_haps.bed"
+    shell:
+        """
+        cat {input} > {output}
+        """
+
+
+rule cat_split_errors:
+    input:
+        expand(
+            rules.split_errors.output,
+            zip,
+            allow_missing = True,
+            hap = ["pat", "mat"],
+            mapped_hap = ["pat", "mat"],
+        ),
+    output:
+        res_ref_dir / "{qver}" / "split_errors_all_haps.bed"
+    shell:
+        """
+        cat {input} > {output}
+        """
+
+
 rule plot_match_summary:
     input:
+        projectable=rules.cat_projectable.output,
+        src=rules.cat_split_errors.output,
+        smallvar_pat = expand(
+            rules.small_var_projected.output,
+            allow_missing = True,
+            hap = "pat",
+            mapped_hap = "pat",
+        ),
+        smallvar_mat = expand(
+            rules.small_var_projected.output,
+            allow_missing = True,
+            hap = "mat",
+            mapped_hap = "mat",
+        ),
         annotated=rules.annotate_vcf.output.all,
         hit=rules.get_matches.output.hits,
         v_nohit=rules.get_matches.output.v_nohit,
@@ -709,10 +791,12 @@ rule all:
         expand(
             rules.plot_match_summary.output,
             ref=["GRCh38"],
+            qver=["v1", "v2"],
         ),
         expand(
             rules.get_projection_stats.output,
             ref=["GRCh38"],
             hap=HAPLOTYPES,
             mapped_hap=HAPLOTYPES,
+            qver=["v1", "v2"],
         ),
