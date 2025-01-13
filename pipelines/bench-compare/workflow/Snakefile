@@ -780,6 +780,7 @@ rule plot_match_summary:
         class_by_type_short = final_dir / "match_summary" / "class_by_type_short.pdf",
         class_by_count_short = final_dir / "match_summary" / "class_by_count_short.pdf",
         ave_collapse = final_dir / "match_summary" / "average_collapse.pdf",
+        errors_by_region = final_dir / "match_summary" / "errors_by_region.pdf",
     conda:
         "envs/r.yml"
     script:

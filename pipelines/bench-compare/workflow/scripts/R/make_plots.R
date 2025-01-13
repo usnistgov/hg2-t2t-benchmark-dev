@@ -89,42 +89,42 @@ select_allele <- function(m, i) {
   m[i * n + 1:n]
 }
 
-annotate_vcf <- function(df) {
-  .df <- df %>%
-    filter(!chrom %in% c("chrX", "chrY")) %>%
-    mutate(chrom = as.integer(str_sub(chrom, 4)))
-  .format <- field_to_matrix(.df$format, ":")
-  .truth <- cbind(field_to_matrix(.df$truth, ":"), NA)
-  .query <- cbind(field_to_matrix(.df$query, ":"), NA)
-  .alleles <- cbind(.df$ref, field_to_matrix(.df$alt, ","))
-  gti <- field_indices(.format, "GT")
-  bdi <- field_indices(.format, "BD")
-  bki <- field_indices(.format, "BK")
-  .df %>%
-    mutate(
-      t_gt = .truth[gti],
-      q_gt = .query[gti],
-      t_bd = .truth[bdi],
-      q_bd = .query[bdi],
-      t_bk = .truth[bki],
-      q_bk = .query[bki],
-      tpi = replace_na(sub_gt(t_gt, TRUE), 0),
-      tmi = replace_na(sub_gt(t_gt, FALSE), 0),
-      qpi = replace_na(sub_gt(q_gt, TRUE), 0),
-      qmi = replace_na(sub_gt(q_gt, FALSE), 0),
-      tp = select_allele(.alleles, tpi),
-      tm = select_allele(.alleles, tmi),
-      qp = select_allele(.alleles, qpi),
-      qm = select_allele(.alleles, qmi),
-      variant_class = gt_to_name(
-        replace_na(tpi, 0),
-        replace_na(tmi, 0),
-        replace_na(qpi, 0),
-        replace_na(qmi, 0)
-      )
-    ) %>%
-    select(-format, -truth, -query)
-}
+#annotate_vcf <- function(df) {
+#  .df <- df %>%
+#    filter(!chrom %in% c("chrX", "chrY")) %>%
+#    mutate(chrom = as.integer(str_sub(chrom, 4)))
+#  .format <- field_to_matrix(.df$format, ":")
+#  .truth <- cbind(field_to_matrix(.df$truth, ":"), NA)
+#  .query <- cbind(field_to_matrix(.df$query, ":"), NA)
+#  .alleles <- cbind(.df$ref, field_to_matrix(.df$alt, ","))
+#  gti <- field_indices(.format, "GT")
+#  bdi <- field_indices(.format, "BD")
+#  bki <- field_indices(.format, "BK")
+#  .df %>%
+#    mutate(
+#      t_gt = .truth[gti],
+#      q_gt = .query[gti],
+#      t_bd = .truth[bdi],
+#      q_bd = .query[bdi],
+#      t_bk = .truth[bki],
+#      q_bk = .query[bki],
+#      tpi = replace_na(sub_gt(t_gt, TRUE), 0),
+#      tmi = replace_na(sub_gt(t_gt, FALSE), 0),
+#      qpi = replace_na(sub_gt(q_gt, TRUE), 0),
+#      qmi = replace_na(sub_gt(q_gt, FALSE), 0),
+#      tp = select_allele(.alleles, tpi),
+#      tm = select_allele(.alleles, tmi),
+#      qp = select_allele(.alleles, qpi),
+#      qm = select_allele(.alleles, qmi),
+#      variant_class = gt_to_name(
+#        replace_na(tpi, 0),
+#        replace_na(tmi, 0),
+#        replace_na(qpi, 0),
+#        replace_na(qmi, 0)
+#      )
+#    ) %>%
+#    select(-format, -truth, -query)
+#}
 
 df_hits <- read_tsv(
   snakemake@input[["hit"]],
@@ -268,6 +268,7 @@ df_vcf_rid_anno <- read_tsv(
     chrom = "i",
     start = "i",
     ref = "c",
+    alt = "c",
     tp = "c",
     tm = "c",
     qp = "c",
@@ -283,6 +284,7 @@ df_vcf_rid_anno <- read_tsv(
     variant_class = "c",
     ng_group = "c",
     group_name = "c",
+    regions = "c",
     .default = "-"
   )
 )
@@ -293,8 +295,8 @@ df_errors_grouped <- df_errors0 %>%
   anti_join(df_small_ids, by = c("gid", "hap")) %>%
   mutate(
     status = case_when(
-      projected ~ "outside",
-      !projected ~ "no_project",
+      projected ~ "Outside Regions",
+      !projected ~ "Not Projected",
       TRUE ~ "unknown"
     )
   ) %>%
@@ -308,16 +310,16 @@ df_hits %>%
   bind_rows(df_g_nohit) %>%
   mutate(
     status = case_when(
-      !is.na(match_id) ~ "matched",
-      hits ~ "unmatched",
-      TRUE ~ "no_hit"
+      !is.na(match_id) ~ "Exact Match",
+      hits ~ "Possible Match",
+      TRUE ~ "No Match"
     )
   ) %>%
   replace_na(list(genome_expected = TRUE)) %>%
   bind_rows(df_errors_grouped) %>%
   ggplot(
     aes(
-      x = factor(status, levels = c("matched", "unmatched", "missing_hit", "no_hit", "outside", "no_project")),
+      x = factor(status, levels = c("Exact Match", "Possible Match", "No Match", "Outside Regions", "Not Projected")),
       fill = error_type
     )
   ) +
@@ -325,8 +327,8 @@ df_hits %>%
   theme(legend.position = "bottom") +
   pretty_theme +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
-  labs(x = NULL, y = "number of genome errors", fill = "Error Type")
-ggsave(snakemake@output[["g_matches"]], units = "mm", width = 50, height = 60)
+  labs(x = NULL, y = "Number of Genome Errors", fill = "Genome\nError Type")
+ggsave(snakemake@output[["g_matches"]], units = "mm", width = 52, height = 60)
 
 df_hit_match_counts <- df_hits %>%
   filter(!is.na(match_id)) %>%
@@ -369,16 +371,23 @@ df_hit_counts %>%
 ggsave(snakemake@output[["vg_matches"]], units = "mm", width = 80, height = 80)
 
 df_vcf_rid_anno %>%
-  mutate(variant_status = if_else(variant_status == "missing_hit", "no_hit", variant_status)) %>%
-  mutate(variant_status = fct_relevel(factor(variant_status), "no_hit", after = 2)) %>%
   filter(!is.na(variant_status)) %>%
+  # missing_hit is so small that they might as well be "no match"
+  mutate(variant_status = case_when(
+    variant_status == "no_hit" ~ "No Match",
+    variant_status == "missing_hit" ~ "No Match",
+    variant_status == "matched" ~ "Exact Match",
+    variant_status == "unmatched" ~ "Possible Match",
+    TRUE ~ "fixmerightmeow"
+  )) %>%
+  mutate(variant_status = fct_relevel(factor(variant_status), "No Match", after = 2)) %>%
   ggplot(aes(variant_status, fill = ng_group)) +
   geom_bar() +
-  labs(x = NULL, y = "number of variants", fill = "Error Count\n(pat, mat)") +
+  labs(x = NULL, y = "Number of Variants", fill = "Genome Error\nCount (pat, mat)") +
   theme(legend.position = "bottom") +
   guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
   pretty_theme
-ggsave(snakemake@output[["v_matches"]], units = "mm", width = 50, height = 60)
+ggsave(snakemake@output[["v_matches"]], units = "mm", width = 55, height = 60)
 
 df_vcf_rid_anno %>%
   filter(!is.na(rid0)) %>%
@@ -387,7 +396,7 @@ df_vcf_rid_anno %>%
   facet_wrap(c("group_name")) +
   pretty_theme +
   theme(legend.position = "bottom") +
-  labs(x = NULL, y = NULL, fill = "Error Type")
+  labs(x = NULL, y = NULL, fill = "Genome\nError Type")
 ggsave(snakemake@output[["class_by_type"]], units = "mm", width = 90, height = 130)
 
 df_vcf_rid_anno %>%
@@ -397,7 +406,7 @@ df_vcf_rid_anno %>%
   facet_wrap(c("group_name")) +
   pretty_theme +
   theme(legend.position = "bottom") +
-  labs(x = NULL, y = NULL, fill = "Error count\n(pat, mat)")
+  labs(x = NULL, y = NULL, fill = "Genome Error\nCount (pat, mat)")
 ggsave(snakemake@output[["class_by_count"]], units = "mm", width = 90, height = 130)
 
 # collapse variant classes into "umbrella classes" which better describe the
@@ -425,20 +434,20 @@ df_vcf_rid_anno_short %>%
   ggplot(aes(y = fct_rev(variant_class), fill = error_type)) +
   geom_bar() +
   facet_wrap(c("group_name")) +
-  labs(x = NULL, y = NULL, fill = "Error Type") +
+  labs(x = NULL, y = NULL, fill = "Genome Error\nType") +
   theme(legend.position = "bottom") +
   pretty_theme
-ggsave(snakemake@output[["class_by_type_short"]], width = 80, height = 55, units = "mm")
+ggsave(snakemake@output[["class_by_type_short"]], width = 80, height = 57, units = "mm")
 
 df_vcf_rid_anno_short %>%
   filter(group_name != "unmatched") %>%
   ggplot(aes(y = fct_rev(variant_class), fill = ng_group)) +
   geom_bar() +
   facet_wrap(c("group_name")) +
-  labs(x = NULL, y = NULL, fill = "Error count\n(pat, mat)") +
+  labs(x = NULL, y = NULL, fill = "Genome Error\nCount (pat, mat)") +
   theme(legend.position = "bottom") +
   pretty_theme
-ggsave(snakemake@output[["class_by_count_short"]], width = 80, height = 55, units = "mm")
+ggsave(snakemake@output[["class_by_count_short"]], width = 80, height = 57, units = "mm")
 
 #
 # how many het_hom_mismatches are "average collapses"? (needed to test the
@@ -496,5 +505,90 @@ df_ave_collapse1 %>%
   ggplot(aes(y = y, fill = group_name)) +
   geom_bar() +
   pretty_theme +
-  labs(x = "count", y = NULL, fill = "category")
+  labs(x = "Number of Variants", y = NULL, fill = "category")
 ggsave(snakemake@output[["ave_collapse"]], units = "mm", width = 80, height = 80)
+
+filter_regions <- function(xs) {
+  redundant <- xs %in% c("AllAutosomes", "CONF", "TS_contained")
+  genome <- str_detect(xs, "^HG00")
+  ancestry <- str_detect(xs, "^ancestry_")
+  xs[!(redundant | genome | ancestry)]
+}
+
+df_seq <- df_vcf_rid_anno %>%
+  mutate(
+    big_variant_class = case_when(
+      variant_class %in% c("hom_mismatch", "het_hom_mismatch",
+                           "bi_het_mismatch/het_mismatch", "bi_het_mismatch",
+                           "het_mismatch", "rev_collapse", "hom_het_mismatch") ~
+        "Seq Errors",
+      variant_class == "misphase" ~ "Misphases",
+      variant_class == "other" ~ "Other Errors",
+      variant_class == "misphase_het_mismatch" ~ "Seq Errors/Misphases",
+      variant_class %in% c("collapse", "het_hom_mismatch",
+                           "collapse/het_hom_mismatch") ~
+        "Collapses",
+      TRUE ~ NA
+    )
+  ) %>%
+  filter(!is.na(big_variant_class)) %>%
+  select(chrom, start, ref, alt, tp, tm, qp, qm, variant_class,
+         big_variant_class, variant_status, ng_group, regions) %>%
+  mutate(
+    tplen = str_length(tp),
+    tmlen = str_length(tm),
+    qplen = str_length(qp),
+    qmlen = str_length(qm),
+    pdiff = qplen - tplen,
+    mdiff = qmlen - tmlen,
+    # ASSUME no SVs
+    ptype = case_when(
+      tp == qp ~ NA,
+      tplen == 1 & qplen == 1 ~ "Subst. Error",
+      TRUE ~ "INDEL Error"
+    ),
+    mtype = case_when(
+      tm == qm ~ NA,
+      tmlen == 1 & qmlen == 1 ~ "Subst. Error",
+      TRUE ~ "INDEL Error"
+    ),
+    type = case_when(
+      is.na(ptype) & is.na(mtype) ~ NA,
+      is.na(ptype) ~ mtype,
+      is.na(mtype) ~ ptype,
+      ptype == mtype ~ ptype,
+      TRUE ~ "MIXED"
+    )
+  ) %>%
+  mutate(regions = str_replace(regions, "BS=[0-9]+;Regions=", "")) %>%
+  mutate(regions = map(str_split(regions, ","), filter_regions)) %>%
+  mutate(
+    inHP = map_lgl(regions, ~ any(str_detect(.x, "^SimpleRepeat_homopolymer_"))),
+    #inHPshort = map_lgl(regions, ~ any(str_detect(.x, "SimpleRepeat_homopolymer_4to6"))),
+    #inHPmid = map_lgl(regions, ~ any(str_detect(.x, "SimpleRepeat_homopolymer_7to11"))),
+    #inHPlong = map_lgl(regions, ~ any(str_detect(.x, "SimpleRepeat_homopolymer_ge12"))),
+    #inHPxlong = map_lgl(regions, ~ any(str_detect(.x, "SimpleRepeat_homopolymer_ge21"))),
+    inHPTR = map_lgl(regions, ~ any(str_detect(.x, "^AllTandemRepeatsandHomopolymers"))),
+    #inGC = map_lgl(regions, ~ any(str_detect(.x, "^gc")))
+  ) %>%
+  mutate(
+    region_class = case_when(
+      inHPTR & !inHP ~ "TRs",
+      inHP ~ "HPs",
+      TRUE ~ "Other"
+    )
+  )
+
+df_seq %>%
+  mutate(region_class = fct_relevel(region_class, "Other", after = 2) %>% fct_rev()) %>%
+  mutate(big_variant_class = fct_relevel(big_variant_class, c("Collapses", "Seq Errors", "Misphases", "Seq Errors/Misphases"))) %>%
+  mutate(type = fct_relevel(type, "MIXED", after = 2)) %>%
+  ggplot(aes(y = region_class, fill = type)) +
+  geom_bar() +
+  facet_wrap(c("big_variant_class"), ncol = 2) +
+  pretty_theme +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 2, byrow = TRUE)) +
+  labs(x = "Number of Variants", y = NULL, fill = "Genome Error\nModality")
+ggsave(snakemake@output[["errors_by_region"]], units = "mm", width = 60, height = 60)
+
