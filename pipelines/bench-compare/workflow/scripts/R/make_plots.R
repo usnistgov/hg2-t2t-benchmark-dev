@@ -358,6 +358,7 @@ df_hit_counts <- bind_rows(
 
 # lots of variants (that actually match) only have one genome error
 df_hit_counts %>%
+  mutate(which = if_else(which == "matched", "Exact Match", "Possible Match")) %>%
   ggplot(aes(ng, fill = factor(nv))) +
   geom_bar() +
   facet_wrap(c("which")) +

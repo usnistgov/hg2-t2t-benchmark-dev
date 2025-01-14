@@ -33,6 +33,14 @@ BENCH = {
     },
 }
 
+STRATS = {
+    "GRCh38": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.5/genome-stratifications-GRCh38@all.tar.gz"
+}
+
+HAPPY = {
+    "GRCh38": "https://giab-data.s3.amazonaws.com/defrabb_runs/20241009_v0.018_HG002Q100v1.1/results/evaluations/happy/GRCh38_HG002_T~T2TQ100v1.1_Q~HPRCcur.20211005-DB-gtfix_TR~dipbed_GRCh38_HG002-T2TQ100v1.1-dipz2k_smvar-excluded/GRCh38_HG2-HPRCcur.20211005-DB-gtfix_HG2-T2TQ100-V1.1_smvar_dipcall-z2k.extended.csv"
+}
+
 ERRORS = {
     "pat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v1.1/benchmark/results/hprc_hg002_curated_vs_v1.1/benchpatv1.1/hg002_curated_pat.errortype.hg002v1.1.bed",
     "mat": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v1.1/benchmark/results/hprc_hg002_curated_vs_v1.1/benchmatv1.1/hg002_curated_mat.errortype.hg002v1.1.bed",
@@ -113,6 +121,13 @@ use rule download_asm as download_error_tarball with:
         url=lambda w: ERROR_TARBALLS[w.hap],
 
 
+use rule download_asm as download_happy with:
+    output:
+        src_dir / "happy" / "{ref}.csv",
+    params:
+        url=lambda w: HAPPY[w.ref],
+
+
 rule extract_errors:
     input:
         rules.download_error_tarball.output,
@@ -142,6 +157,28 @@ rule download_errors:
         url=lambda w: ERRORS[w.hap],
     shell:
         "curl -SsLqf {params.url} > {output}"
+
+
+rule download_strats:
+    output:
+        src_dir / "strats" / "{ref}.tar.gz",
+    params:
+        url=lambda w: STRATS[w.ref],
+    shell:
+        "curl -SsLqf {params.url} > {output}"
+
+
+rule extract_strats:
+    input:
+        rules.download_strats.output,
+    output:
+        res_inter_dir / "{ref}" / "strats" / "{ref}-all-stratifications.tsv"
+    params:
+        root = lambda _, output: str(Path(output[0]).parent)
+    shell:
+        """
+        tar xzf {input} --strip-components=1 -C $(dirname {output})
+        """
 
 
 rule download_error_bam:
@@ -787,10 +824,26 @@ rule plot_match_summary:
         "scripts/R/make_plots.R"
 
 
+rule plot_macro_metrics:
+    input:
+        happy=rules.download_happy.output,
+        mat_errors=expand(rules.small_var_projected.output, allow_missing = True, hap = "mat", mapped_hap = "mat"),
+        pat_errors=expand(rules.small_var_projected.output, allow_missing = True, hap = "pat", mapped_hap = "pat"),
+        all_strats=Path(rules.extract_strats.output[0]).parent,
+    output:
+        errors_per_base = final_dir / "macro_stats" / "errors_per_base.pdf",
+        precision_recall = final_dir / "macro_stats" / "precision_recall.pdf",
+    conda:
+        "envs/r.yml"
+    script:
+        "scripts/R/make_macro_plots.R"
+
+
 rule all:
     input:
         expand(
-            rules.plot_match_summary.output,
+            rules.plot_match_summary.output + 
+            rules.plot_macro_metrics.output,
             ref=["GRCh38"],
             qver=["v1", "v2"],
         ),

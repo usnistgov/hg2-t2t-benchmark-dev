@@ -549,5 +549,5 @@ df_vcf_rid_anno %>%
 # print annotated variants for subsequent viewing pleasure
 df_vcf_rid_anno %>%
   filter(!is.na(variant_status)) %>%
-  select(chrom, start, ref, alt, t_gt, q_gt, t_bd, q_bd, tp, tm, qp, qm, pat_error_type, mat_error_type, error_type, ng_group, variant_class, group_name, regions) %>%
+  select(chrom, start, ref, alt, t_gt, q_gt, t_bd, q_bd, tp, tm, qp, qm, pat_error_type, mat_error_type, error_type, ng_group, variant_class, group_name, regions, vid, pat_mid, mat_mid) %>%
   write_tsv(snakemake@output[["hit"]])
